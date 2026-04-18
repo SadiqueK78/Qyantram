@@ -13,21 +13,46 @@ A full-stack web application for building, simulating, and analyzing quantum cir
 ✨ **Quantum Circuit Builder**
 - Grid-based circuit layout (qubits × time steps)
 - Drag-and-drop gate placement
-- Single and two-qubit gates (H, X, Y, Z, CNOT)
-- Measurement gates
+- Expanded gate library:
+  - Single-qubit: H, I, X, Y, Z, S, Sdg, T, Tdg, SX, SXdg
+  - Parameterized: RX, RY, RZ, P (angle prompt in radians)
+  - Multi-qubit: CNOT, CCNOT (Toffoli), SWAP
+  - Utility: Measure, Reset, Barrier (`|`)
 - Undo/Redo functionality
+- Gate parameter and control-qubit prompts for advanced operations
 
 🎨 **Advanced Visualizations**
-- Bloch sphere visualization with Three.js
+- Q-sphere style 3D state/phase visualization with Three.js
 - Probability histograms with Chart.js
 - State vector display
-- Measurement results
+- Exact probabilities from simulated statevector
+- Sampled measurement results (`counts` + `sampled_probabilities`)
 
 🎮 **Interactive Controls**
 - Add/remove qubits
 - Adjust circuit depth
 - Save/Load circuits (JSON)
 - Real-time simulation
+- Multi-circuit JSON collection loader with:
+  - Previous/Next navigation
+  - Circuit tabs/chips
+  - Active circuit metadata panel
+
+🧠 **Algorithm Template Marketplace**
+- One-click template loading for:
+  - Grover Search
+  - QFT (native approximation)
+  - Quantum Teleportation
+  - Superdense Coding
+  - 3-qubit Bit-Flip Code
+  - Deutsch-Jozsa
+- Load one template or load all as a browsable pack
+
+🚀 **Startup Prompt Experience**
+- Full-screen welcome prompt on first open
+- Animated quantum-themed 3D visualization panel
+- Advanced feature spotlight cards
+- "Do not show again" preference (persisted in localStorage)
 
 🌙 **Modern UI/UX**
 - Dark theme with glassmorphism
@@ -71,7 +96,7 @@ quantum-circuit-simulator/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── App.jsx
+│   │   │   ├── WelcomePrompt.jsx
 │   │   │   ├── CircuitGrid.jsx
 │   │   │   ├── CircuitCell.jsx
 │   │   │   ├── GatePalette.jsx
@@ -106,7 +131,7 @@ quantum-circuit-simulator/
 - Integrates with React DnD
 
 **GatePalette.jsx**
-- Displays available quantum gates
+- Displays grouped composer-style quantum gates
 - Provides draggable gate items
 - Shows gate descriptions and tips
 
@@ -115,6 +140,13 @@ quantum-circuit-simulator/
 - Qubit/step controls
 - Reset, Undo/Redo, Save/Load
 - Error handling and status messages
+- Algorithm template marketplace (one-click circuit loading)
+- Multi-circuit pack navigation (tabs + previous/next)
+
+**WelcomePrompt.jsx**
+- Startup onboarding screen
+- Feature highlights and animated quantum intro scene
+- One-click entry into simulator with dismiss preference
 
 **VisualizationPanel.jsx**
 - Displays simulation results
@@ -123,9 +155,9 @@ quantum-circuit-simulator/
 
 **BlochSphere.jsx**
 - Three.js powered 3D visualization
-- Animated Bloch sphere
-- Displays qubit state vector
-- Real-time rotation
+- Q-sphere style phase and probability view
+- State labels with optional phase visibility
+- Interactive display controls
 
 **Histogram.jsx**
 - Chart.js bar chart
@@ -142,13 +174,14 @@ quantum-circuit-simulator/
 - Simulation results
 - Undo/Redo history
 - Save/Load functionality
+- Circuit collections and active template metadata
 
 ### Backend API
 
-**POST /api/simulate**
+**POST /api/simulate** (proxied to backend `/simulate`)
 - Builds quantum circuit from gates
 - Simulates using Qiskit
-- Returns statevector and probabilities
+- Returns statevector, exact probabilities, sampled probabilities, and counts
 
 Request:
 ```json
@@ -178,7 +211,16 @@ Response:
 **GET /api/health**
 - Health check endpoint
 
-## Sample Circuits
+## Sample Circuits and Template Packs
+
+Use the built-in loader with [SAMPLE_CIRCUITS.json](SAMPLE_CIRCUITS.json), which now includes:
+- Bell State with Phase Twist
+- Toffoli (CCNOT) demos
+- SWAP-based layouts
+- Reset/Barrier workflows
+- Application-style examples (teleportation skeleton, superdense coding, bit-flip code)
+
+You can also use the in-app Algorithm Template Marketplace for one-click loading.
 
 ### Bell State (Entanglement)
 1. Add 2 qubits
@@ -274,15 +316,14 @@ npm run dev
 - Verify gate configuration
 - Ensure qubits ≤ 5 for performance
 
-## Advanced Features (Future)
+## Implemented Advanced Features
 
-- ⏳ Custom angle rotations (RX, RY, RZ)
-- ⏳ Swap gates
-- ⏳ Multiple register support
-- ⏳ Circuit optimization
-- ⏳ Amplitude amplification
-- ⏳ Quantum Fourier Transform
-- ⏳ Hardware provider integration
+- ✅ Parameterized rotation and phase gates (RX/RY/RZ/P)
+- ✅ Advanced gate operations (CCNOT, SWAP, Reset, Barrier)
+- ✅ Q-sphere style 3D phase/probability visualization
+- ✅ Algorithm Template Marketplace
+- ✅ Multi-circuit JSON pack loading and navigation
+- ✅ Startup onboarding prompt with animated quantum intro
 
 
 
