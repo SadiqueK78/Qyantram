@@ -1,0 +1,546 @@
+{
+  "circuits": [
+    {
+      "name": "Bell State with Phase Twist",
+      "description": "Bell pair plus phase and basis rotations (H, CNOT, S, T, RZ)",
+      "data": {
+        "qubits": 2,
+        "gates": [
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "H"
+          },
+          {
+            "id": "cnot-1",
+            "qubit": 1,
+            "step": 1,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "s-0",
+            "qubit": 0,
+            "step": 2,
+            "type": "S"
+          },
+          {
+            "id": "t-1",
+            "qubit": 1,
+            "step": 3,
+            "type": "T"
+          },
+          {
+            "id": "rz-0",
+            "qubit": 0,
+            "step": 4,
+            "type": "RZ",
+            "theta": 1.0471975512
+          }
+        ]
+      }
+    },
+    {
+      "name": "Single-Qubit Gate Sweep",
+      "description": "Applies identity, phase, sqrt and rotation family on one qubit",
+      "data": {
+        "qubits": 1,
+        "gates": [
+          {
+            "id": "i-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "I"
+          },
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 1,
+            "type": "H"
+          },
+          {
+            "id": "sx-0",
+            "qubit": 0,
+            "step": 2,
+            "type": "SX"
+          },
+          {
+            "id": "sxdg-0",
+            "qubit": 0,
+            "step": 3,
+            "type": "SXdg"
+          },
+          {
+            "id": "p-0",
+            "qubit": 0,
+            "step": 4,
+            "type": "P",
+            "theta": 0.7853981634
+          },
+          {
+            "id": "rx-0",
+            "qubit": 0,
+            "step": 5,
+            "type": "RX",
+            "theta": 1.5707963268
+          },
+          {
+            "id": "ry-0",
+            "qubit": 0,
+            "step": 6,
+            "type": "RY",
+            "theta": 1.0471975512
+          },
+          {
+            "id": "rz-0",
+            "qubit": 0,
+            "step": 7,
+            "type": "RZ",
+            "theta": -0.5235987756
+          },
+          {
+            "id": "measure-0",
+            "qubit": 0,
+            "step": 8,
+            "type": "Measure"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Toffoli Truth Demo (CCNOT)",
+      "description": "Prepares controls in |11> and flips target with CCNOT",
+      "data": {
+        "qubits": 3,
+        "gates": [
+          {
+            "id": "x-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "X"
+          },
+          {
+            "id": "x-1",
+            "qubit": 1,
+            "step": 1,
+            "type": "X"
+          },
+          {
+            "id": "ccnot-2",
+            "qubit": 2,
+            "step": 2,
+            "type": "CCNOT",
+            "controlQubit": 0,
+            "controlQubit2": 1
+          },
+          {
+            "id": "barrier-2",
+            "qubit": 2,
+            "step": 3,
+            "type": "Barrier"
+          },
+          {
+            "id": "swap-2",
+            "qubit": 2,
+            "step": 4,
+            "type": "SWAP",
+            "swapQubit": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Entangle-Swap Ladder",
+      "description": "Creates pairwise entanglement and reshuffles qubits using SWAP",
+      "data": {
+        "qubits": 4,
+        "gates": [
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "H"
+          },
+          {
+            "id": "h-2",
+            "qubit": 2,
+            "step": 1,
+            "type": "H"
+          },
+          {
+            "id": "cnot-01",
+            "qubit": 1,
+            "step": 2,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "cnot-23",
+            "qubit": 3,
+            "step": 3,
+            "type": "CNOT",
+            "controlQubit": 2
+          },
+          {
+            "id": "swap-13",
+            "qubit": 1,
+            "step": 4,
+            "type": "SWAP",
+            "swapQubit": 3
+          },
+          {
+            "id": "swap-02",
+            "qubit": 0,
+            "step": 5,
+            "type": "SWAP",
+            "swapQubit": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Reset and Barrier Workflow",
+      "description": "Uses reset and barrier between controlled and rotation stages",
+      "data": {
+        "qubits": 3,
+        "gates": [
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "H"
+          },
+          {
+            "id": "cnot-12",
+            "qubit": 2,
+            "step": 1,
+            "type": "CNOT",
+            "controlQubit": 1
+          },
+          {
+            "id": "barrier-1",
+            "qubit": 1,
+            "step": 2,
+            "type": "Barrier"
+          },
+          {
+            "id": "reset-1",
+            "qubit": 1,
+            "step": 3,
+            "type": "Reset"
+          },
+          {
+            "id": "ry-2",
+            "qubit": 2,
+            "step": 4,
+            "type": "RY",
+            "theta": 2.0943951024
+          },
+          {
+            "id": "sdg-0",
+            "qubit": 0,
+            "step": 5,
+            "type": "Sdg"
+          },
+          {
+            "id": "tdg-2",
+            "qubit": 2,
+            "step": 6,
+            "type": "Tdg"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Five-Qubit Hybrid Stress Test",
+      "description": "Advanced mixed circuit covering most supported gates in one load",
+      "data": {
+        "qubits": 5,
+        "gates": [
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "H"
+          },
+          {
+            "id": "x-1",
+            "qubit": 1,
+            "step": 1,
+            "type": "X"
+          },
+          {
+            "id": "y-2",
+            "qubit": 2,
+            "step": 2,
+            "type": "Y"
+          },
+          {
+            "id": "z-3",
+            "qubit": 3,
+            "step": 3,
+            "type": "Z"
+          },
+          {
+            "id": "sx-4",
+            "qubit": 4,
+            "step": 4,
+            "type": "SX"
+          },
+          {
+            "id": "cnot-10",
+            "qubit": 0,
+            "step": 5,
+            "type": "CNOT",
+            "controlQubit": 1
+          },
+          {
+            "id": "ccnot-3",
+            "qubit": 3,
+            "step": 6,
+            "type": "CCNOT",
+            "controlQubit": 0,
+            "controlQubit2": 2
+          },
+          {
+            "id": "swap-42",
+            "qubit": 4,
+            "step": 7,
+            "type": "SWAP",
+            "swapQubit": 2
+          },
+          {
+            "id": "p-1",
+            "qubit": 1,
+            "step": 8,
+            "type": "P",
+            "theta": 0.3926990817
+          },
+          {
+            "id": "rx-2",
+            "qubit": 2,
+            "step": 9,
+            "type": "RX",
+            "theta": 1.2566370614
+          },
+          {
+            "id": "ry-3",
+            "qubit": 3,
+            "step": 10,
+            "type": "RY",
+            "theta": -0.7853981634
+          },
+          {
+            "id": "rz-4",
+            "qubit": 4,
+            "step": 11,
+            "type": "RZ",
+            "theta": 0.6283185307
+          },
+          {
+            "id": "barrier-0",
+            "qubit": 0,
+            "step": 12,
+            "type": "Barrier"
+          },
+          {
+            "id": "reset-2",
+            "qubit": 2,
+            "step": 13,
+            "type": "Reset"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Superdense Coding (Application)",
+      "description": "Encodes two classical bits into one qubit using shared entanglement",
+      "data": {
+        "qubits": 2,
+        "gates": [
+          {
+            "id": "h-0",
+            "qubit": 0,
+            "step": 0,
+            "type": "H"
+          },
+          {
+            "id": "cnot-1",
+            "qubit": 1,
+            "step": 1,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "x-0",
+            "qubit": 0,
+            "step": 2,
+            "type": "X"
+          },
+          {
+            "id": "z-0",
+            "qubit": 0,
+            "step": 3,
+            "type": "Z"
+          },
+          {
+            "id": "cnot-1-dec",
+            "qubit": 1,
+            "step": 4,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "h-0-dec",
+            "qubit": 0,
+            "step": 5,
+            "type": "H"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Quantum Teleportation Skeleton",
+      "description": "Core teleportation-style entangle + Bell measurement pattern without classical feed-forward",
+      "data": {
+        "qubits": 3,
+        "gates": [
+          {
+            "id": "ry-source",
+            "qubit": 0,
+            "step": 0,
+            "type": "RY",
+            "theta": 1.1344640138
+          },
+          {
+            "id": "h-1",
+            "qubit": 1,
+            "step": 1,
+            "type": "H"
+          },
+          {
+            "id": "cnot-21",
+            "qubit": 2,
+            "step": 2,
+            "type": "CNOT",
+            "controlQubit": 1
+          },
+          {
+            "id": "cnot-10",
+            "qubit": 1,
+            "step": 3,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "h-0-bell",
+            "qubit": 0,
+            "step": 4,
+            "type": "H"
+          },
+          {
+            "id": "barrier-mid",
+            "qubit": 1,
+            "step": 5,
+            "type": "Barrier"
+          },
+          {
+            "id": "x-corr",
+            "qubit": 2,
+            "step": 6,
+            "type": "X"
+          },
+          {
+            "id": "z-corr",
+            "qubit": 2,
+            "step": 7,
+            "type": "Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "3-Qubit Bit-Flip Code (Application)",
+      "description": "Simple error-correction style encoding and syndrome extraction pattern",
+      "data": {
+        "qubits": 5,
+        "gates": [
+          {
+            "id": "ry-data",
+            "qubit": 0,
+            "step": 0,
+            "type": "RY",
+            "theta": 0.9
+          },
+          {
+            "id": "enc-cnot-01",
+            "qubit": 1,
+            "step": 1,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "enc-cnot-02",
+            "qubit": 2,
+            "step": 2,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "inject-error",
+            "qubit": 1,
+            "step": 3,
+            "type": "X"
+          },
+          {
+            "id": "syn-cnot-30",
+            "qubit": 3,
+            "step": 4,
+            "type": "CNOT",
+            "controlQubit": 0
+          },
+          {
+            "id": "syn-cnot-31",
+            "qubit": 3,
+            "step": 5,
+            "type": "CNOT",
+            "controlQubit": 1
+          },
+          {
+            "id": "syn-cnot-41",
+            "qubit": 4,
+            "step": 6,
+            "type": "CNOT",
+            "controlQubit": 1
+          },
+          {
+            "id": "syn-cnot-42",
+            "qubit": 4,
+            "step": 7,
+            "type": "CNOT",
+            "controlQubit": 2
+          },
+          {
+            "id": "barrier-end",
+            "qubit": 2,
+            "step": 8,
+            "type": "Barrier"
+          },
+          {
+            "id": "m3",
+            "qubit": 3,
+            "step": 9,
+            "type": "Measure"
+          },
+          {
+            "id": "m4",
+            "qubit": 4,
+            "step": 10,
+            "type": "Measure"
+          }
+        ]
+      }
+    }
+  ]
+}
