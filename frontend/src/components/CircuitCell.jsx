@@ -1,11 +1,15 @@
-import React from 'react'
+import React, { useState, useCallback } from 'react'
 import { useDrop } from 'react-dnd'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCircuitStore } from '../store/useCircuitStore'
+import { useAI } from '../hooks/useAI'
 
 function CircuitCell({ qubit, step, isHovered }) {
-  const { circuit, qubits, addGate, removeGate } = useCircuitStore()
+  const { circuit, qubits, addGate, removeGate, highlightedStep, beginnerMode } = useCircuitStore()
+  const { handleExplainGate } = useAI()
+  const [showTooltip, setShowTooltip] = useState(false)
   const gate = circuit[qubit]?.[step]
+  const isHighlighted = highlightedStep === step
   const angleGates = ['RX', 'RY', 'RZ', 'P']
 
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
@@ -217,6 +221,30 @@ function CircuitCell({ qubit, step, isHovered }) {
 
   const title = gate ? `${gate.type}${extraTitle} - Click to remove` : ''
 
+  // Right-click handler to explain gate via AI
+  const handleContextMenu = useCallback(
+    (e) => {
+      if (!gate) return
+      e.preventDefault()
+      e.stopPropagation()
+      handleExplainGate({
+        type: gate.type,
+        qubit,
+        step,
+        ...(gate.controlQubit !== undefined && { controlQubit: gate.controlQubit }),
+        ...(gate.controlQubit2 !== undefined && { controlQubit2: gate.controlQubit2 }),
+        ...(gate.swapQubit !== undefined && { swapQubit: gate.swapQubit }),
+        ...(gate.theta !== undefined && { theta: gate.theta }),
+      })
+    },
+    [gate, qubit, step, handleExplainGate]
+  )
+
+  // Tooltip text for hover
+  const tooltipText = gate
+    ? `${gate.type}${gate.controlQubit !== undefined ? ` ctrl=q${gate.controlQubit}` : ''}${gate.theta !== undefined ? ` θ=${Number(gate.theta).toFixed(2)}` : ''} — Right-click to explain`
+    : 'Drop a gate here'
+
   return (
     <motion.div
       ref={drop}
@@ -224,10 +252,33 @@ function CircuitCell({ qubit, step, isHovered }) {
         circuit-cell w-12 h-12 m-1 relative group
         ${isOver && canDrop ? 'valid-drop' : ''}
         ${isOver && !canDrop ? 'invalid-drop' : ''}
+        ${isHighlighted ? 'ring-2 ring-quantum-purple/60 bg-quantum-purple/10' : ''}
       `}
       whileHover={{ scale: 1.05 }}
       transition={{ duration: 0.15 }}
+      onContextMenu={handleContextMenu}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
     >
+      {/* Hover tooltip */}
+      <AnimatePresence>
+        {showTooltip && gate && beginnerMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="absolute -top-10 left-1/2 -translate-x-1/2 z-50
+              px-2.5 py-1.5 rounded-lg bg-dark-800/95 backdrop-blur-md
+              border border-white/15 shadow-xl shadow-black/40
+              text-[10px] text-white/80 whitespace-nowrap pointer-events-none"
+          >
+            {tooltipText}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0
+              border-l-4 border-r-4 border-t-4
+              border-l-transparent border-r-transparent border-t-white/15" />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {gate && (
           <motion.div

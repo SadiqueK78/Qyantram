@@ -1,6 +1,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { useCircuitStore } from '../store/useCircuitStore'
+import { useAI } from '../hooks/useAI'
 import axios from 'axios'
 
 const ALGORITHM_TEMPLATES = [
@@ -142,7 +143,18 @@ function ControlPanel() {
     isSimulating,
     history,
     historyIndex,
+    // AI state
+    beginnerMode,
+    toggleBeginnerMode,
+    stepExplainMode,
+    toggleStepExplainMode,
+    highlightedStep,
+    setHighlightedStep,
+    isAILoading,
+    toggleAIPanel,
   } = useCircuitStore()
+
+  const { handleExplainCircuit, handleExplainStep } = useAI()
 
   const [error, setError] = React.useState(null)
   const [success, setSuccess] = React.useState(null)
@@ -294,6 +306,122 @@ function ControlPanel() {
           '▶️ Run Simulation'
         )}
       </motion.button>
+
+      {/* AI Learning Section */}
+      <div className="mb-4 p-3 bg-gradient-to-br from-quantum-purple/5 to-quantum-blue/5 rounded-lg border border-white/10">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
+            <span>🤖</span> AI Learning
+          </h3>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleAIPanel}
+            className="text-xs px-2 py-1 rounded-md bg-quantum-purple/15 border border-quantum-purple/30 text-quantum-purple hover:bg-quantum-purple/25 transition-all"
+          >
+            Panel
+          </motion.button>
+        </div>
+
+        {/* Beginner Mode toggle */}
+        <div className="flex items-center justify-between mb-2 py-1.5">
+          <span className="text-xs text-white/60 flex items-center gap-1.5">
+            🎓 Beginner Mode
+          </span>
+          <button
+            onClick={toggleBeginnerMode}
+            className={`
+              w-9 h-5 rounded-full relative transition-all duration-200
+              ${beginnerMode ? 'bg-green-500/40 border-green-400/40' : 'bg-white/10 border-white/15'}
+              border
+            `}
+          >
+            <span
+              className={`
+                absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200
+                ${beginnerMode ? 'right-0.5 bg-green-400' : 'left-0.5 bg-white/40'}
+              `}
+            />
+          </button>
+        </div>
+
+        {/* Explain Circuit button */}
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={handleExplainCircuit}
+          disabled={isAILoading || gates.length === 0}
+          className="w-full bg-quantum-blue/15 hover:bg-quantum-blue/25 border border-quantum-blue/30
+            rounded-lg py-2 mb-2 text-sm font-semibold text-quantum-blue
+            disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        >
+          {isAILoading ? '⏳ Analyzing...' : '🔗 Explain Circuit'}
+        </motion.button>
+
+        {/* Step-by-Step Explain toggle */}
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-xs text-white/60 flex items-center gap-1.5">
+            👣 Step-by-Step
+          </span>
+          <button
+            onClick={toggleStepExplainMode}
+            className={`
+              w-9 h-5 rounded-full relative transition-all duration-200
+              ${stepExplainMode ? 'bg-quantum-purple/50 border-quantum-purple/40' : 'bg-white/10 border-white/15'}
+              border
+            `}
+          >
+            <span
+              className={`
+                absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200
+                ${stepExplainMode ? 'right-0.5 bg-quantum-purple' : 'left-0.5 bg-white/40'}
+              `}
+            />
+          </button>
+        </div>
+
+        {/* Step navigator — visible when step explain mode is on */}
+        {stepExplainMode && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-2 p-2.5 bg-dark-800/60 rounded-lg border border-white/10"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] text-white/50">
+                Step: {highlightedStep !== null ? highlightedStep : '—'} / {steps - 1}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  const prev = highlightedStep !== null ? Math.max(0, highlightedStep - 1) : 0
+                  setHighlightedStep(prev)
+                  handleExplainStep(prev)
+                }}
+                disabled={isAILoading}
+                className="flex-1 bg-quantum-purple/15 hover:bg-quantum-purple/25 border border-quantum-purple/30
+                  rounded-md py-1.5 text-xs font-semibold text-quantum-purple disabled:opacity-40 transition-all"
+              >
+                ◀ Prev
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  const next = highlightedStep !== null ? Math.min(steps - 1, highlightedStep + 1) : 0
+                  setHighlightedStep(next)
+                  handleExplainStep(next)
+                }}
+                disabled={isAILoading}
+                className="flex-1 bg-quantum-purple/15 hover:bg-quantum-purple/25 border border-quantum-purple/30
+                  rounded-md py-1.5 text-xs font-semibold text-quantum-purple disabled:opacity-40 transition-all"
+              >
+                Next ▶
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </div>
 
       {/* Qubit controls */}
       <div className="mb-4 p-3 bg-dark-700/50 rounded-lg">

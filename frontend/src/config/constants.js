@@ -58,6 +58,7 @@ export const API_CONFIG = {
     SIMULATE: '/simulate',
     GATES: '/gates',
     HEALTH: '/health',
+    AI_EXPLAIN: '/ai-explain',
   },
   TIMEOUT: 30000,
 }

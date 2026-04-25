@@ -167,6 +167,17 @@ export const useCircuitStore = create((set, get) => ({
   circuitCollectionIndex: 0,
   activeCircuitMeta: null,
 
+  // AI Assistant state
+  aiResponse: null,
+  isAILoading: false,
+  selectedGateForAI: null,
+  explanationMode: null, // 'gate' | 'circuit' | 'step'
+  isAIPanelOpen: false,
+  aiError: null,
+  beginnerMode: false,
+  stepExplainMode: false,
+  highlightedStep: null,
+
   // Actions
   setQubits: (qubits) =>
     set((state) => {
@@ -444,4 +455,35 @@ export const useCircuitStore = create((set, get) => ({
       state.goToLoadedCircuitIndex(state.circuitCollectionIndex - 1)
     }
   },
+
+  // -------------------------------------------------------------------------
+  // AI Assistant actions
+  // -------------------------------------------------------------------------
+
+  setAIResponse: (response) => set({ aiResponse: response }),
+  setAILoading: (loading) => set({ isAILoading: loading }),
+  setAIError: (error) => set({ aiError: error }),
+
+  setSelectedGateForAI: (gate) => set({ selectedGateForAI: gate }),
+  setExplanationMode: (mode) => set({ explanationMode: mode }),
+
+  setAIPanelOpen: (open) => set({ isAIPanelOpen: open }),
+  toggleAIPanel: () => set((state) => ({ isAIPanelOpen: !state.isAIPanelOpen })),
+
+  toggleBeginnerMode: () => set((state) => ({ beginnerMode: !state.beginnerMode })),
+  setBeginnerMode: (on) => set({ beginnerMode: on }),
+
+  setStepExplainMode: (on) => set({ stepExplainMode: on }),
+  toggleStepExplainMode: () => set((state) => ({ stepExplainMode: !state.stepExplainMode })),
+
+  setHighlightedStep: (step) => set({ highlightedStep: step }),
+
+  clearAIResponse: () =>
+    set({
+      aiResponse: null,
+      aiError: null,
+      selectedGateForAI: null,
+      explanationMode: null,
+      highlightedStep: null,
+    }),
 }))

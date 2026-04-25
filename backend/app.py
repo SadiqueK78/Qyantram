@@ -5,8 +5,16 @@ from qiskit_aer import AerSimulator
 import numpy as np
 from typing import List, Dict, Any
 import logging
+import os
+import requests as http_requests
 
 # Setup
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv is optional, env vars can be set directly
+
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
@@ -370,6 +378,99 @@ def get_available_gates():
         },
     ]
     return jsonify(gates), 200
+
+
+@app.route('/ai-explain', methods=['POST'])
+def ai_explain():
+    """
+    AI explanation endpoint — proxies requests to OpenRouter API.
+    Keeps the API key securely on the server.
+
+    Expected JSON body:
+    {
+        "prompt": "User prompt text",
+        "model": "openai/gpt-4o-mini"  (optional)
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get('prompt'):
+            return jsonify({'error': 'No prompt provided'}), 400
+
+        api_key = os.environ.get('OPENROUTER_API_KEY', '')
+        if not api_key:
+            return jsonify({
+                'error': 'OpenRouter API key not configured. '
+                         'Set OPENROUTER_API_KEY in backend .env file.'
+            }), 503
+
+        model = data.get('model', 'openai/gpt-4o-mini')
+        user_prompt = data['prompt']
+
+        system_prompt = (
+            'You are a quantum computing tutor designed for beginners. '
+            'Follow these rules strictly:\n'
+            '1. **Simple Explanation First**: Start with a plain-English analogy '
+            'that a non-technical person can understand.\n'
+            '2. **Technical Explanation**: Follow with a precise technical '
+            'description using Dirac notation and matrix representations.\n'
+            '3. **Step Insight**: If the user is asking about a specific step, '
+            'explain what happens to the quantum state at that step.\n'
+            '4. **Final Output Explanation**: Summarize what the circuit produces '
+            'and what measurement outcomes mean.\n'
+            '5. Keep answers concise but informative — 150-300 words.\n'
+            '6. Use markdown formatting (bold, bullets) and USE LaTeX for math formulas using `$ ... $` (inline) and `$$ ... $$` (block).\n'
+            '7. Be encouraging and supportive.'
+        )
+
+        logger.info(f'AI explain request — model={model}, prompt_len={len(user_prompt)}')
+
+        response = http_requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {api_key}',
+                'HTTP-Referer': 'http://localhost:5173',
+                'X-Title': 'Quantum Logic Gate Simulator',
+            },
+            json={
+                'model': model,
+                'messages': [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_prompt},
+                ],
+                'max_tokens': 1024,
+                'temperature': 0.7,
+            },
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            error_msg = error_data.get('error', {}).get('message', f'OpenRouter returned {response.status_code}')
+            logger.error(f'OpenRouter error: {error_msg}')
+            return jsonify({'error': error_msg}), response.status_code
+
+        result = response.json()
+        explanation = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+
+        if not explanation:
+            return jsonify({'error': 'No explanation returned from AI'}), 502
+
+        return jsonify({
+            'explanation': explanation,
+            'model': model,
+        }), 200
+
+    except http_requests.exceptions.Timeout:
+        logger.error('OpenRouter request timed out')
+        return jsonify({'error': 'AI request timed out. Please try again.'}), 504
+    except http_requests.exceptions.ConnectionError:
+        logger.error('Cannot connect to OpenRouter')
+        return jsonify({'error': 'Cannot connect to AI service. Check your internet connection.'}), 503
+    except Exception as e:
+        logger.error(f'AI explain error: {e}')
+        return jsonify({'error': f'AI service error: {str(e)}'}), 500
 
 
 @app.errorhandler(404)

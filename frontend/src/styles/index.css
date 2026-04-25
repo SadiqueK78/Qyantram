@@ -394,3 +394,92 @@ h3 {
     transform: translate(-50%, -50%) rotate(360deg) translateX(110px);
   }
 }
+
+/* ======================================================================== */
+/* AI ASSISTANT PANEL STYLES                                                */
+/* ======================================================================== */
+
+/* Markdown content inside AI panel */
+.ai-markdown h2 {
+  @apply text-base font-bold mt-4 mb-2;
+  background: linear-gradient(120deg, #24dbff, #7b61ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ai-markdown h3 {
+  @apply text-sm font-bold text-white mt-3 mb-1;
+}
+
+.ai-markdown h4 {
+  @apply text-sm font-bold text-cyan-300 mt-3 mb-1;
+}
+
+.ai-markdown p {
+  @apply text-sm text-white/80 leading-relaxed;
+}
+
+.ai-markdown code {
+  @apply px-1.5 py-0.5 rounded text-xs font-mono;
+  background: rgba(0, 217, 255, 0.08);
+  border: 1px solid rgba(0, 217, 255, 0.15);
+  color: #24dbff;
+}
+
+.ai-markdown strong {
+  @apply text-white font-semibold;
+}
+
+/* AI Response content area */
+.ai-response-content {
+  @apply rounded-xl p-4;
+  background: linear-gradient(
+    135deg,
+    rgba(124, 58, 237, 0.04),
+    rgba(0, 217, 255, 0.04)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Highlighted step cell in circuit grid during step-by-step mode */
+.circuit-cell.step-highlighted {
+  @apply ring-2 ring-quantum-purple/60;
+  background: rgba(124, 58, 237, 0.08);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.2);
+}
+
+/* AI panel scrollbar */
+.ai-panel-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ai-panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.3);
+  border-radius: 4px;
+}
+
+.ai-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.5);
+}
+
+/* Fade-in animation for AI responses */
+@keyframes aiResponseFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ai-response-enter {
+  animation: aiResponseFadeIn 0.4s ease-out forwards;
+}
+

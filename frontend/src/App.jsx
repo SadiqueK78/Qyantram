@@ -6,6 +6,7 @@ import GatePalette from './components/GatePalette'
 import ControlPanel from './components/ControlPanel'
 import VisualizationPanel from './components/VisualizationPanel'
 import WelcomePrompt from './components/WelcomePrompt'
+import AIAssistantPanel from './components/AIAssistantPanel'
 
 function App() {
   const [showWelcomePrompt, setShowWelcomePrompt] = React.useState(false)
@@ -73,6 +74,9 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* AI Assistant Panel (fixed overlay) */}
+        <AIAssistantPanel />
       </div>
 
       {showWelcomePrompt && <WelcomePrompt onStart={handleDismissWelcome} />}
