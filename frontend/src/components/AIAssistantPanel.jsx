@@ -12,7 +12,7 @@
  * - Markdown-style rendering for AI responses
  */
 
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAI } from '../hooks/useAI'
@@ -152,6 +152,48 @@ function AIAssistantPanel() {
 
   const { handleExplainCircuit, handleClearAI } = useAI()
   const scrollRef = useRef(null)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+
+  // Stop speaking when component unmounts
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel()
+    }
+  }, [])
+
+  // Stop speaking when response changes
+  useEffect(() => {
+    window.speechSynthesis.cancel()
+    setIsSpeaking(false)
+  }, [aiResponse])
+
+  const handleToggleSpeech = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+    } else {
+      if (!aiResponse) return
+      
+      // Basic cleanup of markdown and math for speech
+      let textToSpeak = aiResponse
+        .replace(/```[\s\S]*?```/g, ' Code snippet omitted. ')
+        .replace(/([_*~`#])/g, '')
+        .replace(/\\\[|\\\]|\\\(|\\\)/g, '')
+        .replace(/\\frac{([^}]+)}{([^}]+)}/g, '$1 over $2')
+        .replace(/\^\{([^}]+)\}/g, ' to the power of $1 ')
+        .replace(/\\theta/g, 'theta')
+        .replace(/\\pi/g, 'pi')
+        .replace(/\\sqrt{([^}]+)}/g, ' square root of $1 ')
+
+      const utterance = new SpeechSynthesisUtterance(textToSpeak)
+      
+      utterance.onend = () => setIsSpeaking(false)
+      utterance.onerror = () => setIsSpeaking(false)
+
+      setIsSpeaking(true)
+      window.speechSynthesis.speak(utterance)
+    }
+  }
 
   // Auto-scroll to bottom when new content arrives
   useEffect(() => {
@@ -250,6 +292,25 @@ function AIAssistantPanel() {
                 >
                   🔗 Explain Circuit
                 </motion.button>
+
+                {/* Voice button */}
+                {aiResponse && (
+                  <motion.button
+                    onClick={handleToggleSpeech}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs transition-all border
+                      ${isSpeaking 
+                        ? 'bg-quantum-pink/20 border-quantum-pink/40 text-quantum-pink' 
+                        : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:border-white/20'
+                      }
+                    `}
+                    whileTap={{ scale: 0.95 }}
+                    title={isSpeaking ? "Stop Speaking" : "Read Aloud"}
+                  >
+                    {isSpeaking ? '⏹ Stop' : '🔊 Listen'}
+                  </motion.button>
+                )}
 
                 {/* Clear button */}
                 {aiResponse && (
