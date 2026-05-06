@@ -1,6 +1,12 @@
-# Quantum Logic Gate Simulator
+# Qyantram - Quantum Logic Gate Simulator
 
 A full-stack web application for building, simulating, and analyzing quantum circuits with an interactive drag-and-drop interface.
+
+**Developed by:** Sadique Khatib, Sharyu Kekane, Akshada Kale, Abhushan Bokade
+
+**Institute:** K K WAGH INSTITUTE OF ENGINEERING EDUCATION AND RESEARCH, NASHIK
+
+**Guided by:** Dr Uday Wad and Dr S M Kamalapur
 
 ## Architecture
 

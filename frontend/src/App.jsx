@@ -41,10 +41,10 @@ function App() {
                 <div className="mt-1 h-12 w-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 shadow-[0_0_30px_rgba(0,217,255,0.35)]" />
                 <div className="space-y-1">
                   <h1 className="text-3xl font-bold leading-tight md:text-5xl">
-                    <span className="gradient-text">Quantum Logic Gate Simulator</span>
+                    <span className="gradient-text">Qyantram</span>
                   </h1>
                   <p className="text-sm text-slate-300 md:text-lg">
-                    Build, animate, and analyze quantum states with an interactive composer.
+                    Quantum Logic Gate Simulator
                   </p>
                 </div>
               </div>

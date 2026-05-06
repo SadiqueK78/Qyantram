@@ -48,8 +48,9 @@ function WelcomePrompt({ onStart }) {
               </span>
 
               <h2 className="mt-4 text-3xl font-bold leading-tight md:text-5xl">
-                <span className="gradient-text">Welcome to Quantum Logic Gate Simulator</span>
+                <span className="gradient-text">Welcome to Qyantram</span>
               </h2>
+              <p className="text-lg text-white/70">Quantum Logic Gate Simulator</p>
 
               <p className="mt-4 max-w-xl text-sm text-slate-300 md:text-base">
                 Design and simulate quantum circuits in a production-grade interface. Start with curated algorithms
@@ -123,8 +124,57 @@ function WelcomePrompt({ onStart }) {
                 <p className="mt-1 font-semibold text-indigo-200">Algorithmic</p>
               </div>
             </div>
+
+            {/* Quick Start & Highlights Section */}
+            <div className="mt-5 space-y-3">
+              <p className="text-[10px] uppercase tracking-widest text-white/60 font-semibold">Quick Start Challenges</p>
+              <div className="grid grid-cols-2 gap-2">
+                <motion.div
+                  whileHover={{ scale: 1.03, borderColor: 'rgba(34, 211, 238, 0.6)' }}
+                  className="rounded-lg border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 p-2.5 cursor-pointer hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
+                >
+                  <p className="text-xs font-semibold text-cyan-200">🔔 Bell State</p>
+                  <p className="text-[9px] text-white/60 mt-0.5">Create entanglement</p>
+                </motion.div>
+                <motion.div
+                  whileHover={{ scale: 1.03, borderColor: 'rgba(99, 102, 241, 0.6)' }}
+                  className="rounded-lg border border-indigo-400/20 bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 p-2.5 cursor-pointer hover:shadow-lg hover:shadow-indigo-500/20 transition-all"
+                >
+                  <p className="text-xs font-semibold text-indigo-200">📊 Learn Gates</p>
+                  <p className="text-[9px] text-white/60 mt-0.5">AI-guided tutorial</p>
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="mt-3 rounded-lg border border-purple-400/20 bg-gradient-to-r from-purple-500/8 to-pink-500/8 p-2.5 backdrop-blur-sm"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-lg leading-none mt-0.5">✨</span>
+                  <div>
+                    <p className="text-xs font-semibold text-white">Ready to explore quantum?</p>
+                    <p className="text-[9px] text-white/60 mt-0.5">Start with algorithms • or build from scratch</p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </div>
         </div>
+
+        {/* Credits Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="mt-8 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-center text-[11px] text-white/70"
+        >
+          <p className="font-semibold text-white mb-2">Developed by</p>
+          <p>Sadique Khatib, Sharyu Kekane, Akshada Kale, Abhushan Bokade</p>
+          <p className="mt-2 font-semibold text-white/80">K K WAGH INSTITUTE OF ENGINEERING EDUCATION AND RESEARCH, NASHIK</p>
+          <p className="mt-2">Guided by Dr Uday Wad and Dr S M Kamalapur</p>
+        </motion.div>
       </motion.div>
     </motion.div>
   )
