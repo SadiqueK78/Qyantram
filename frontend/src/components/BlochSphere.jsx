@@ -110,6 +110,11 @@ function formatAngleDegrees(value) {
 
 function BlochSphere({ result, qubit = 0 }) {
   const canvasRef = useRef(null)
+  const sceneRef = useRef(null)
+  const rendererRef = useRef(null)
+  const cameraRef = useRef(null)
+  const controlsRef = useRef(null)
+  const dynamicGroupRef = useRef(null)
   const [showStateLabels, setShowStateLabels] = useState(true)
   const [showPhaseLabel, setShowPhaseLabel] = useState(true)
   const [error, setError] = useState(null)
@@ -121,6 +126,8 @@ function BlochSphere({ result, qubit = 0 }) {
   const dominantPhase = qSpherePoints[0]?.phase ?? 0
   const phaseDeg = (((dominantPhase * 180) / Math.PI) % 360 + 360) % 360
 
+  // Mount-once effect: set up renderer, scene, camera, controls, static
+  // sphere/ring, and the animation loop. Runs a single time per mount.
   useEffect(() => {
     if (!canvasRef.current) return undefined
 
@@ -130,20 +137,24 @@ function BlochSphere({ result, qubit = 0 }) {
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x050b2a)
+    sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100)
     camera.position.set(2.3, 1.6, 2.7)
+    cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(width, height)
     mount.innerHTML = ''
     mount.appendChild(renderer.domElement)
+    rendererRef.current = renderer
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
     controls.enableDamping = true
     controls.autoRotate = false
+    controlsRef.current = controls
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.64)
     scene.add(ambient)
@@ -187,28 +198,12 @@ function BlochSphere({ result, qubit = 0 }) {
     // Equator must lie on the XZ plane (horizontal), so rotate the base XY circle around X.
     scene.add(buildRing('x'))
 
-    // IBM-like state vectors from center to each populated basis-state point.
-    qSpherePoints.slice(0, 32).forEach((point) => {
-      const endPoint = qToWorld(point.x, point.y, point.z)
-      const opacity = clamp(0.22 + 1.35 * point.probability, 0.22, 1)
-
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), endPoint]),
-        new THREE.LineBasicMaterial({ color: new THREE.Color(point.color), transparent: true, opacity })
-      )
-      line.renderOrder = 10
-      line.material.depthTest = false
-      scene.add(line)
-
-      const node = new THREE.Mesh(
-        new THREE.SphereGeometry(0.028 + 0.05 * Math.sqrt(point.probability), 16, 16),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(point.color), transparent: true, opacity })
-      )
-      node.position.copy(endPoint)
-      node.renderOrder = 11
-      node.material.depthTest = false
-      scene.add(node)
-    })
+    // Dedicated group for per-simulation state-vector lines/nodes, so
+    // updates only need to clear and repopulate this group instead of
+    // touching the rest of the (expensive-to-create) scene.
+    const dynamicGroup = new THREE.Group()
+    scene.add(dynamicGroup)
+    dynamicGroupRef.current = dynamicGroup
 
     let rafId = 0
     const animate = () => {
@@ -232,11 +227,56 @@ function BlochSphere({ result, qubit = 0 }) {
       window.removeEventListener('resize', onResize)
       cancelAnimationFrame(rafId)
       controls.dispose()
+      sphereGeometry.dispose()
+      sphereMaterial.dispose()
+      ringMaterial.dispose()
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement)
       }
+      sceneRef.current = null
+      rendererRef.current = null
+      cameraRef.current = null
+      controlsRef.current = null
+      dynamicGroupRef.current = null
     }
+  }, [])
+
+  // Update-on-data effect: only touches the dynamic state-vector group,
+  // instead of rebuilding the renderer/scene/camera every simulation run.
+  useEffect(() => {
+    const group = dynamicGroupRef.current
+    if (!group) return undefined
+
+    // Dispose old children's geometry/material before clearing, to avoid
+    // leaking GPU resources across repeated simulation runs.
+    while (group.children.length > 0) {
+      const child = group.children.pop()
+      if (child.geometry) child.geometry.dispose()
+      if (child.material) child.material.dispose()
+    }
+
+    qSpherePoints.slice(0, 32).forEach((point) => {
+      const endPoint = qToWorld(point.x, point.y, point.z)
+      const opacity = clamp(0.22 + 1.35 * point.probability, 0.22, 1)
+
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), endPoint]),
+        new THREE.LineBasicMaterial({ color: new THREE.Color(point.color), transparent: true, opacity })
+      )
+      line.renderOrder = 10
+      line.material.depthTest = false
+      group.add(line)
+
+      const node = new THREE.Mesh(
+        new THREE.SphereGeometry(0.028 + 0.05 * Math.sqrt(point.probability), 16, 16),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(point.color), transparent: true, opacity })
+      )
+      node.position.copy(endPoint)
+      node.renderOrder = 11
+      node.material.depthTest = false
+      group.add(node)
+    })
   }, [qSpherePoints])
 
   useEffect(() => {
