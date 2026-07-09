@@ -143,7 +143,10 @@ function BlochSphere({ result, qubit = 0 }) {
     sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100)
-    camera.position.set(2.3, 1.6, 2.7)
+    // Front-on default view matching IBM Composer's Q-sphere orientation:
+    // poles vertical, equator states left/right, slight elevation to
+    // reveal the equator as a shallow ellipse rather than a flat line.
+    camera.position.set(0, 0.6, 3.3)
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
