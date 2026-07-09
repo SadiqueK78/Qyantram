@@ -87,7 +87,10 @@ function extractQSpherePoints(statevector, showPhaseColors) {
         bitstring: state.index.toString(2).padStart(n, '0'),
         probability: state.prob,
         phase,
-        x,
+        // Negate x to match IBM Composer's convention: lower-index basis
+        // states (e.g. |01>) render on the left, higher-index (e.g. |10>)
+        // on the right.
+        x: -x,
         y,
         z,
         color: phaseToColor(phase, showPhaseColors),
