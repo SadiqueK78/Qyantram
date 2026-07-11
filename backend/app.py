@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from qiskit import QuantumCircuit
+from qiskit.circuit.library import QFT
 from qiskit_aer import AerSimulator
 import numpy as np
 from typing import List, Dict, Any
@@ -112,6 +113,16 @@ class QuantumCircuitBuilder:
                         qc.barrier(target)
                 elif gate_type == 'RESET':
                     qc.reset(target)
+                elif gate_type == 'QFT':
+                    # Quantum Fourier Transform applied across the whole register.
+                    n = qc.num_qubits
+                    qc.append(QFT(num_qubits=n, do_swaps=True).to_gate(label='QFT'),
+                              range(n))
+                elif gate_type == 'IQFT':
+                    # Inverse Quantum Fourier Transform across the whole register.
+                    n = qc.num_qubits
+                    qc.append(QFT(num_qubits=n, do_swaps=True).inverse().to_gate(label='IQFT'),
+                              range(n))
                 elif gate_type == 'MEASURE':
                     pass  # Measurement will be added after all gates
                 else:

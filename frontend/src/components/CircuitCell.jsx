@@ -1,391 +1,311 @@
 import React, { useState, useCallback } from 'react'
-import { useDrop } from 'react-dnd'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useDrag, useDrop } from 'react-dnd'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAI } from '../hooks/useAI'
+import { GATES, GRID, gateSymbol } from '../config/constants'
+
+const ANGLE_GATES = ['RX', 'RY', 'RZ', 'P']
+
+// A draggable control/target node that sits on another wire and can be dragged
+// to reassign which qubit it connects to (IBM-Composer-style).
+function ControlNode({ target, step, role, offsetRows, kind }) {
+  const [{ isDragging }, drag] = useDrag(
+    () => ({
+      type: 'CONTROL',
+      item: { target, step, role },
+      collect: (m) => ({ isDragging: !!m.isDragging() }),
+    }),
+    [target, step, role]
+  )
+
+  const top = `calc(50% + ${offsetRows * GRID.ROW_PITCH}px)`
+  const common = { top, opacity: isDragging ? 0.4 : 1 }
+
+  if (kind === 'swap') {
+    return (
+      <div
+        ref={drag}
+        className="control-node flex items-center justify-center text-[color:rgb(var(--g-fg,#c13e76))]"
+        style={{ ...common, width: 18, height: 18, fontSize: 16, fontWeight: 700 }}
+      >
+        ×
+      </div>
+    )
+  }
+  // control dot
+  return (
+    <div
+      ref={drag}
+      className="control-node"
+      style={{ ...common, width: 11, height: 11, background: 'currentColor' }}
+    />
+  )
+}
 
 function CircuitCell({ qubit, step, isHovered }) {
-  const { circuit, qubits, addGate, removeGate, highlightedStep, beginnerMode } = useCircuitStore()
+  const { circuit, qubits, addGate, removeGate, setGateControl, setGateTheta, highlightedStep, beginnerMode } =
+    useCircuitStore()
   const { handleExplainGate } = useAI()
-  const [showTooltip, setShowTooltip] = useState(false)
   const gate = circuit[qubit]?.[step]
+  const meta = gate ? GATES[gate.type] : null
   const isHighlighted = highlightedStep === step
-  const angleGates = ['RX', 'RY', 'RZ', 'P']
 
-  const [{ isOver, canDrop }, drop] = useDrop(() => ({
-    accept: 'GATE',
-    drop: (item) => {
-      if (item.type === 'CNOT') {
-        if (qubits < 2) {
-          window.alert('CNOT requires at least 2 qubits')
+  const [anglePopover, setAnglePopover] = useState(false)
+  const [angleDraft, setAngleDraft] = useState('1.5708')
+
+  // Default partner wire for a freshly dropped multi-qubit gate (no prompts).
+  const defaultPartner = qubit === 0 ? 1 : qubit - 1
+
+  const [{ isOver, canDrop }, drop] = useDrop(
+    () => ({
+      accept: ['GATE', 'CONTROL'],
+      canDrop: (item, monitor) => {
+        if (monitor.getItemType() === 'CONTROL') {
+          // A control node may only be re-homed onto a different wire.
+          return item.target !== qubit
+        }
+        return true
+      },
+      drop: (item, monitor) => {
+        if (monitor.getItemType() === 'CONTROL') {
+          setGateControl(item.target, item.step, item.role, qubit)
           return
         }
 
-        const defaultControl = qubit === 0 ? 1 : qubit - 1
-        const controlInput = window.prompt(
-          `CNOT target is q${qubit}. Enter control qubit (0-${qubits - 1}, not ${qubit}):`,
-          String(defaultControl)
-        )
-
-        if (controlInput === null) {
+        const type = item.type
+        if (type === 'CNOT') {
+          if (qubits < 2) return
+          addGate(qubit, step, { type: 'CNOT', controlQubit: defaultPartner })
           return
         }
-
-        const controlQubit = Number(controlInput)
-        if (
-          !Number.isInteger(controlQubit) ||
-          controlQubit < 0 ||
-          controlQubit >= qubits ||
-          controlQubit === qubit
-        ) {
-          window.alert('Invalid control qubit selection for CNOT')
+        if (type === 'CCNOT') {
+          if (qubits < 3) return
+          const cands = Array.from({ length: qubits }, (_, i) => i).filter((i) => i !== qubit)
+          addGate(qubit, step, { type: 'CCNOT', controlQubit: cands[0], controlQubit2: cands[1] })
           return
         }
-
-        addGate(qubit, step, { type: 'CNOT', controlQubit })
-        return
-      }
-
-      if (item.type === 'CCNOT') {
-        if (qubits < 3) {
-          window.alert('CCNOT requires at least 3 qubits')
+        if (type === 'SWAP') {
+          if (qubits < 2) return
+          addGate(qubit, step, { type: 'SWAP', swapQubit: defaultPartner })
           return
         }
-
-        const candidates = Array.from({ length: qubits }, (_, i) => i).filter((i) => i !== qubit)
-        const defaultControl1 = candidates[0]
-        const defaultControl2 = candidates[1]
-
-        const controlInput1 = window.prompt(
-          `CCNOT target is q${qubit}. Enter first control qubit (0-${qubits - 1}, not ${qubit}):`,
-          String(defaultControl1)
-        )
-        if (controlInput1 === null) {
+        if (ANGLE_GATES.includes(type)) {
+          addGate(qubit, step, { type, theta: 1.5708 })
+          setAngleDraft('1.5708')
+          setAnglePopover(true)
           return
         }
-
-        const controlQubit = Number(controlInput1)
-        if (
-          !Number.isInteger(controlQubit) ||
-          controlQubit < 0 ||
-          controlQubit >= qubits ||
-          controlQubit === qubit
-        ) {
-          window.alert('Invalid first control qubit for CCNOT')
-          return
-        }
-
-        const controlInput2 = window.prompt(
-          `Enter second control qubit (0-${qubits - 1}, not ${qubit} and not ${controlQubit}):`,
-          String(defaultControl2 === controlQubit ? candidates[2] ?? candidates[0] : defaultControl2)
-        )
-        if (controlInput2 === null) {
-          return
-        }
-
-        const controlQubit2 = Number(controlInput2)
-        if (
-          !Number.isInteger(controlQubit2) ||
-          controlQubit2 < 0 ||
-          controlQubit2 >= qubits ||
-          controlQubit2 === qubit ||
-          controlQubit2 === controlQubit
-        ) {
-          window.alert('Invalid second control qubit for CCNOT')
-          return
-        }
-
-        addGate(qubit, step, { type: 'CCNOT', controlQubit, controlQubit2 })
-        return
-      }
-
-      if (item.type === 'SWAP') {
-        if (qubits < 2) {
-          window.alert('SWAP requires at least 2 qubits')
-          return
-        }
-
-        const defaultSwap = qubit === 0 ? 1 : qubit - 1
-        const swapInput = window.prompt(
-          `SWAP source is q${qubit}. Enter partner qubit (0-${qubits - 1}, not ${qubit}):`,
-          String(defaultSwap)
-        )
-
-        if (swapInput === null) {
-          return
-        }
-
-        const swapQubit = Number(swapInput)
-        if (
-          !Number.isInteger(swapQubit) ||
-          swapQubit < 0 ||
-          swapQubit >= qubits ||
-          swapQubit === qubit
-        ) {
-          window.alert('Invalid partner qubit for SWAP')
-          return
-        }
-
-        addGate(qubit, step, { type: 'SWAP', swapQubit })
-        return
-      }
-
-      if (angleGates.includes(item.type)) {
-        const raw = window.prompt(
-          `${item.type} angle in radians (example: 1.5708 for pi/2):`,
-          '1.5708'
-        )
-
-        if (raw === null) {
-          return
-        }
-
-        const theta = Number(raw)
-        if (!Number.isFinite(theta)) {
-          window.alert('Invalid angle value')
-          return
-        }
-
-        addGate(qubit, step, { type: item.type, theta })
-        return
-      }
-
-      addGate(qubit, step, { type: item.type })
-    },
-    collect: (monitor) => ({
-      isOver: !!monitor.isOver(),
-      canDrop: !!monitor.canDrop(),
+        addGate(qubit, step, { type })
+      },
+      collect: (m) => ({ isOver: !!m.isOver(), canDrop: !!m.canDrop() }),
     }),
-  }))
+    [qubit, step, qubits, defaultPartner, addGate, setGateControl]
+  )
 
-  const getGateDisplay = () => {
-    if (!gate) return null
-    switch (gate.type) {
-      case 'H':
-        return 'H'
-      case 'X':
-        return 'X'
-      case 'Z':
-        return 'Z'
-      case 'Y':
-        return 'Y'
-      case 'I':
-        return 'I'
-      case 'S':
-        return 'S'
-      case 'Sdg':
-        return 'S†'
-      case 'T':
-        return 'T'
-      case 'Tdg':
-        return 'T†'
-      case 'SX':
-        return '√X'
-      case 'SXdg':
-        return '√X†'
-      case 'RX':
-        return 'RX'
-      case 'RY':
-        return 'RY'
-      case 'RZ':
-        return 'RZ'
-      case 'P':
-        return 'P'
-      case 'CNOT':
-        return '⊕'
-      case 'CCNOT':
-        return '⊕'
-      case 'SWAP':
-        return '×'
-      case 'Measure':
-        return '⌚'
-      case 'Reset':
-        return '|0⟩'
-      case 'Barrier':
-        return '|'
-      default:
-        return gate.type
-    }
-  }
-
-  const extraTitle =
-    gate?.type === 'CNOT' && Number.isInteger(gate.controlQubit)
-      ? ` (control=q${gate.controlQubit})`
-      : gate?.type === 'CCNOT' && Number.isInteger(gate.controlQubit) && Number.isInteger(gate.controlQubit2)
-      ? ` (controls=q${gate.controlQubit},q${gate.controlQubit2})`
-      : gate?.type === 'SWAP' && Number.isInteger(gate.swapQubit)
-      ? ` (with=q${gate.swapQubit})`
-      : gate?.theta !== undefined
-      ? ` (theta=${Number(gate.theta).toFixed(4)} rad)`
-      : ''
-
-  const title = gate ? `${gate.type}${extraTitle} - Click to remove` : ''
-
-  // Right-click handler to explain gate via AI
   const handleContextMenu = useCallback(
     (e) => {
       if (!gate) return
       e.preventDefault()
       e.stopPropagation()
-      handleExplainGate({
-        type: gate.type,
-        qubit,
-        step,
-        ...(gate.controlQubit !== undefined && { controlQubit: gate.controlQubit }),
-        ...(gate.controlQubit2 !== undefined && { controlQubit2: gate.controlQubit2 }),
-        ...(gate.swapQubit !== undefined && { swapQubit: gate.swapQubit }),
-        ...(gate.theta !== undefined && { theta: gate.theta }),
-      })
+      handleExplainGate({ type: gate.type, qubit, step, ...gate })
     },
     [gate, qubit, step, handleExplainGate]
   )
 
-  // Tooltip text for hover
-  const tooltipText = gate
-    ? `${gate.type}${gate.controlQubit !== undefined ? ` ctrl=q${gate.controlQubit}` : ''}${gate.theta !== undefined ? ` θ=${Number(gate.theta).toFixed(2)}` : ''} — Right-click to explain`
-    : 'Drop a gate here'
+  const commitAngle = () => {
+    const t = Number(angleDraft)
+    if (Number.isFinite(t)) setGateTheta(qubit, step, t)
+    setAnglePopover(false)
+  }
+
+  // --- connectors for multi-qubit gates (rendered from the target cell) ---
+  const connectors = []
+  if (gate) {
+    const partners = []
+    if (gate.type === 'CNOT' && Number.isInteger(gate.controlQubit)) {
+      partners.push({ wire: gate.controlQubit, role: 'control', kind: 'dot' })
+    } else if (gate.type === 'CCNOT') {
+      if (Number.isInteger(gate.controlQubit)) partners.push({ wire: gate.controlQubit, role: 'control', kind: 'dot' })
+      if (Number.isInteger(gate.controlQubit2)) partners.push({ wire: gate.controlQubit2, role: 'control2', kind: 'dot' })
+    } else if (gate.type === 'SWAP' && Number.isInteger(gate.swapQubit)) {
+      partners.push({ wire: gate.swapQubit, role: 'swap', kind: 'swap' })
+    }
+
+    partners.forEach((p) => {
+      if (p.wire === qubit) return
+      const delta = p.wire - qubit // rows away (negative = up)
+      connectors.push(
+        <React.Fragment key={p.role}>
+          <div
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+            style={{
+              width: 2,
+              background: 'currentColor',
+              top: delta < 0 ? `calc(50% + ${delta * GRID.ROW_PITCH}px)` : '50%',
+              height: `${Math.abs(delta) * GRID.ROW_PITCH}px`,
+            }}
+          />
+          <ControlNode target={qubit} step={step} role={p.role} offsetRows={delta} kind={p.kind === 'swap' ? 'swap' : 'dot'} />
+        </React.Fragment>
+      )
+    })
+  }
+
+  const showSwapX = gate?.type === 'SWAP'
+  const tileTone = meta ? `gate-${meta.tone}` : ''
+  const isBarrier = gate?.type === 'Barrier'
+  const isMeasure = gate?.type === 'Measure'
+
+  const removeThis = (e) => {
+    e.stopPropagation()
+    removeGate(qubit, step)
+  }
+
+  const tileTitle = isMeasure
+    ? 'Measure — collapses this qubit onto its classical bit (click to remove)'
+    : isBarrier
+    ? 'Barrier — separates compilation stages, no operation (click to remove)'
+    : gate?.theta !== undefined
+    ? `${gate.type} (θ=${Number(gate.theta).toFixed(4)}) — click to remove, double-click to edit`
+    : `${gate?.type} — click to remove`
 
   return (
-    <motion.div
+    <div
       ref={drop}
-      className={`
-        circuit-cell w-12 h-12 m-1 relative group
-        ${isOver && canDrop ? 'valid-drop' : ''}
-        ${isOver && !canDrop ? 'invalid-drop' : ''}
-        ${isHighlighted ? 'ring-2 ring-quantum-purple/60 bg-quantum-purple/10' : ''}
-      `}
-      whileHover={{ scale: 1.05 }}
-      transition={{ duration: 0.15 }}
       onContextMenu={handleContextMenu}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
+      className={`circuit-cell ${isOver && canDrop ? 'valid-drop' : ''} ${isOver && !canDrop ? 'invalid-drop' : ''} ${isHighlighted ? 'step-highlighted' : ''}`}
+      style={{ width: GRID.COL_WIDTH, height: GRID.ROW_PITCH, color: meta ? 'var(--g-fg)' : 'inherit' }}
     >
-      {/* Hover tooltip */}
-      <AnimatePresence>
-        {showTooltip && gate && beginnerMode && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            className="absolute -top-10 left-1/2 -translate-x-1/2 z-50
-              px-2.5 py-1.5 rounded-lg bg-dark-800/95 backdrop-blur-md
-              border border-white/15 shadow-xl shadow-black/40
-              text-[10px] text-white/80 whitespace-nowrap pointer-events-none"
-          >
-            {tooltipText}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0
-              border-l-4 border-r-4 border-t-4
-              border-l-transparent border-r-transparent border-t-white/15" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {gate && (
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            exit={{ scale: 0, rotate: 180 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className={`
-              absolute inset-0 rounded-md flex items-center justify-center
-              font-bold text-white text-sm cursor-pointer
-              gate-icon ${gate.type.toLowerCase()}
-              group-hover:shadow-lg group-hover:scale-110
-            `}
-            onClick={(e) => {
+      {/* multi-qubit connectors + draggable nodes */}
+      {connectors}
+
+      {/* IBM-style barrier: full-height dashed vertical band, no colored box */}
+      {isBarrier && (
+        <div
+          onClick={removeThis}
+          title={tileTitle}
+          className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 cursor-pointer items-stretch"
+          style={{ zIndex: 5 }}
+        >
+          <span
+            className="my-0.5 block"
+            style={{ width: 0, borderLeft: '2px dashed rgb(var(--faint))', height: '100%' }}
+          />
+        </div>
+      )}
+
+      {/* IBM-style measurement: meter glyph + dashed tick down toward the classical register.
+          Anchored to the wire's true center line (top: 50% of this cell), matching how the
+          other multi-qubit connectors are positioned, so it can't drift from the tile above it. */}
+      {isMeasure && (() => {
+        // Distance from this wire's centerline down to the classical rail's centerline:
+        // full rows below this one, plus the remaining half of this row, plus half of the
+        // classical row's own (smaller, fixed 28px) height.
+        const toClassical = (qubits - qubit - 0.5) * GRID.ROW_PITCH + 14
+        return (
+          <>
+            <div
+              onClick={removeThis}
+              title={tileTitle}
+              className="relative flex cursor-pointer items-center justify-center"
+              style={{ width: GRID.COL_WIDTH, height: GRID.CELL, zIndex: 5 }}
+            >
+              <div
+                className={`gate-tile ${tileTone} flex items-center justify-center`}
+                style={{ width: GRID.CELL, height: GRID.CELL }}
+              >
+                <svg width="22" height="16" viewBox="0 0 22 16" fill="none">
+                  <path d="M2 14 A9 9 0 0 1 20 14" stroke="currentColor" strokeWidth="1.6" fill="none" />
+                  <line x1="11" y1="14" x2="17" y2="5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            {/* dashed connector + arrowhead, drawn as one continuous SVG so there's no seam,
+                positioned from the wire's centerline down to the classical rail's centerline */}
+            <svg
+              className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+              width="12"
+              height={toClassical}
+              style={{ top: '50%' }}
+              viewBox={`0 0 12 ${toClassical}`}
+            >
+              <line
+                x1="6"
+                y1="0"
+                x2="6"
+                y2={toClassical - 6}
+                stroke="rgb(var(--grid-wire))"
+                strokeWidth="2"
+                strokeDasharray="4 3"
+              />
+              <path
+                d={`M0 ${toClassical - 6} L12 ${toClassical - 6} L6 ${toClassical} Z`}
+                fill="rgb(var(--grid-wire))"
+              />
+            </svg>
+            <span
+              className="pointer-events-none absolute font-mono text-[10px] text-faint"
+              style={{ left: 'calc(50% + 9px)', top: `calc(50% + ${toClassical - 15}px)` }}
+            >
+              {qubit}
+            </span>
+          </>
+        )
+      })()}
+
+      {gate && !isBarrier && !isMeasure && (
+        <div
+          onClick={removeThis}
+          onDoubleClick={(e) => {
+            if (ANGLE_GATES.includes(gate.type)) {
               e.stopPropagation()
-              removeGate(qubit, step)
-            }}
-            title={title}
-          >
-            {getGateDisplay()}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {gate?.type === 'CNOT' && Number.isInteger(gate.controlQubit) && gate.controlQubit !== qubit && (
-        <>
-          <div
-            className="pointer-events-none absolute left-1/2 w-[2px] -translate-x-1/2 bg-quantum-pink/80"
-            style={{
-              top: gate.controlQubit < qubit ? `calc(50% - ${Math.abs(gate.controlQubit - qubit) * 64}px)` : '50%',
-              height: `${Math.abs(gate.controlQubit - qubit) * 64}px`,
-            }}
-          />
-          <div
-            className="pointer-events-none absolute left-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-quantum-pink ring-2 ring-quantum-pink/30"
-            style={{
-              top: gate.controlQubit < qubit ? `calc(50% - ${Math.abs(gate.controlQubit - qubit) * 64}px)` : `calc(50% + ${Math.abs(gate.controlQubit - qubit) * 64}px)`,
-            }}
-          />
-        </>
+              setAngleDraft(String(gate.theta ?? 1.5708))
+              setAnglePopover(true)
+            }
+          }}
+          title={tileTitle}
+          className={`gate-tile ${tileTone} cursor-pointer`}
+          style={{ width: GRID.CELL, height: GRID.CELL, fontSize: gate.type.length > 2 ? 10 : 13, zIndex: 5 }}
+        >
+          {showSwapX ? '×' : gateSymbol(gate.type)}
+        </div>
       )}
 
-      {gate?.type === 'CCNOT' &&
-        [gate.controlQubit, gate.controlQubit2]
-          .filter((control) => Number.isInteger(control) && control !== qubit)
-          .map((control) => {
-            const distance = Math.abs(control - qubit)
-            const upwards = control < qubit
-            return (
-              <React.Fragment key={`ccnot-${control}`}>
-                <div
-                  className="pointer-events-none absolute left-1/2 w-[2px] -translate-x-1/2 bg-quantum-pink/80"
-                  style={{
-                    top: upwards ? `calc(50% - ${distance * 64}px)` : '50%',
-                    height: `${distance * 64}px`,
-                  }}
-                />
-                <div
-                  className="pointer-events-none absolute left-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-quantum-pink ring-2 ring-quantum-pink/30"
-                  style={{
-                    top: upwards ? `calc(50% - ${distance * 64}px)` : `calc(50% + ${distance * 64}px)`,
-                  }}
-                />
-              </React.Fragment>
-            )
-          })}
-
-      {gate?.type === 'SWAP' && Number.isInteger(gate.swapQubit) && gate.swapQubit !== qubit && (
-        <>
-          <div
-            className="pointer-events-none absolute left-1/2 w-[2px] -translate-x-1/2 bg-fuchsia-300/70"
-            style={{
-              top: gate.swapQubit < qubit ? `calc(50% - ${Math.abs(gate.swapQubit - qubit) * 64}px)` : '50%',
-              height: `${Math.abs(gate.swapQubit - qubit) * 64}px`,
-            }}
-          />
-          <div
-            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-fuchsia-200 text-lg font-bold"
-            style={{
-              top: gate.swapQubit < qubit ? `calc(50% - ${Math.abs(gate.swapQubit - qubit) * 64}px)` : `calc(50% + ${Math.abs(gate.swapQubit - qubit) * 64}px)`,
-            }}
-          >
-            ×
+      {/* angle popover */}
+      {anglePopover && (
+        <div
+          className="absolute left-1/2 top-full z-30 mt-1 w-40 -translate-x-1/2 rounded-lg border border-line bg-surface p-2 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            {gate?.type} angle (rad)
           </div>
-        </>
+          <input
+            autoFocus
+            value={angleDraft}
+            onChange={(e) => setAngleDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && commitAngle()}
+            className="w-full rounded border border-line bg-panel px-2 py-1 text-[12px] text-ink outline-none"
+          />
+          <div className="mt-1.5 flex justify-end gap-1">
+            <button className="rounded px-2 py-0.5 text-[11px] text-faint" onClick={() => setAnglePopover(false)}>
+              Cancel
+            </button>
+            <button className="rounded bg-ink px-2 py-0.5 text-[11px] text-paper" onClick={commitAngle}>
+              Set
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* Hover indicator */}
-      {isHovered && !gate && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 bg-quantum-blue/10 rounded-md"
-          pointer-events="none"
-        />
+      {/* hover tooltip in beginner mode */}
+      {beginnerMode && isHovered && gate && (
+        <div className="pointer-events-none absolute -top-8 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-surface px-2 py-1 text-[10px] text-ink shadow">
+          {GATES[gate.type]?.desc || gate.type}
+        </div>
       )}
-
-      {/* Drop preview */}
-      {isOver && canDrop && !gate && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="absolute inset-0 border-2 border-dashed border-quantum-blue rounded-md"
-          pointer-events="none"
-        />
-      )}
-    </motion.div>
+    </div>
   )
 }
 

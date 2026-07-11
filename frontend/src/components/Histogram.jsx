@@ -1,116 +1,78 @@
-import React, { useEffect, useRef } from 'react'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-  Legend,
-} from 'chart.js'
-import { Bar } from 'react-chartjs-2'
+import React from 'react'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
+/**
+ * Vertical measurement-outcome histogram. `mode` is 'probability' | 'counts'.
+ * Rendered with plain elements so it inherits the theme tokens directly.
+ */
+function Histogram({ result, mode = 'probability' }) {
+  const source =
+    mode === 'counts'
+      ? result?.counts
+      : result?.probabilities || result?.sampled_probabilities
 
-function Histogram({ result }) {
-  const probabilitiesSource = result?.probabilities || result?.sampled_probabilities
-
-  if (!probabilitiesSource) {
-    return (
-      <div className="text-center py-8 text-white/60">
-        <p>No measurement data</p>
-      </div>
-    )
+  if (!source || Object.keys(source).length === 0) {
+    return <div className="py-8 text-center text-[13px] text-muted">No measurement data</div>
   }
 
-  // Format data for chart
-  const bitstrings = Object.keys(probabilitiesSource)
-    .sort((a, b) => probabilitiesSource[b] - probabilitiesSource[a])
+  const entries = Object.entries(source)
+    .map(([label, value]) => ({ label, value: Number(value) }))
+    .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 8)
-  const probabilities = bitstrings.map((bs) => probabilitiesSource[bs] * 100)
 
-  const data = {
-    labels: bitstrings,
-    datasets: [
-      {
-        label: 'Probability (%)',
-        data: probabilities,
-        backgroundColor: [
-          'rgba(0, 217, 255, 0.6)',
-          'rgba(124, 58, 237, 0.6)',
-          'rgba(236, 72, 153, 0.6)',
-          'rgba(59, 130, 246, 0.6)',
-          'rgba(34, 197, 94, 0.6)',
-          'rgba(168, 85, 247, 0.6)',
-          'rgba(244, 63, 94, 0.6)',
-          'rgba(59, 130, 246, 0.6)',
-        ],
-        borderColor: [
-          'rgba(0, 217, 255, 1)',
-          'rgba(124, 58, 237, 1)',
-          'rgba(236, 72, 153, 1)',
-          'rgba(59, 130, 246, 1)',
-          'rgba(34, 197, 94, 1)',
-          'rgba(168, 85, 247, 1)',
-          'rgba(244, 63, 94, 1)',
-          'rgba(59, 130, 246, 1)',
-        ],
-        borderWidth: 1,
-        borderRadius: 4,
-      },
-    ],
-  }
+  const isProb = mode !== 'counts'
+  const max = isProb ? 1 : Math.max(...entries.map((e) => e.value), 1)
+  const yTicks = isProb ? [1, 0.75, 0.5, 0.25, 0] : [max, max * 0.75, max * 0.5, max * 0.25, 0]
 
-  const options = {
-    responsive: true,
-    maintainAspectRatio: true,
-    indexAxis: 'y',
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: 'rgba(15, 15, 35, 0.9)',
-        titleColor: '#00d9ff',
-        bodyColor: '#ffffff',
-        borderColor: 'rgba(0, 217, 255, 0.3)',
-        borderWidth: 1,
-        padding: 10,
-        displayColors: false,
-        callbacks: {
-          label: (context) => `${context.raw.toFixed(2)}%`,
-        },
-      },
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        max: 100,
-        grid: {
-          color: 'rgba(255, 255, 255, 0.05)',
-        },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.5)',
-          font: {
-            size: 11,
-          },
-        },
-      },
-      y: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.7)',
-          font: {
-            size: 12,
-            weight: 'bold',
-          },
-        },
-      },
-    },
-  }
+  return (
+    <div className="flex gap-2">
+      {/* y-axis */}
+      <div className="flex w-8 flex-col justify-between py-1 text-right text-[10px] text-faint" style={{ height: 190 }}>
+        {yTicks.map((t) => (
+          <span key={t}>{isProb ? t.toFixed(2) : Math.round(t)}</span>
+        ))}
+      </div>
 
-  return <Bar data={data} options={options} />
+      {/* plot */}
+      <div className="min-w-0 flex-1">
+        <div className="relative flex items-end justify-around gap-2 border-l border-b border-line" style={{ height: 190 }}>
+          {/* gridlines */}
+          {yTicks.slice(0, -1).map((t, i) => (
+            <div
+              key={i}
+              className="pointer-events-none absolute left-0 right-0 border-t border-line opacity-40"
+              style={{ top: `${(i / (yTicks.length - 1)) * 100}%` }}
+            />
+          ))}
+
+          {entries.map((e) => {
+            const h = Math.max(1, (e.value / max) * 100)
+            return (
+              <div key={e.label} className="relative flex h-full flex-1 flex-col items-center justify-end">
+                <span className="mb-1 font-mono text-[10px] text-muted">
+                  {isProb ? `${(e.value * 100).toFixed(1)}%` : e.value}
+                </span>
+                <div
+                  className="w-full max-w-[34px] rounded-t"
+                  style={{ height: `${h}%`, background: 'rgb(var(--accent))' }}
+                  title={`${e.label}: ${isProb ? (e.value * 100).toFixed(2) + '%' : e.value}`}
+                />
+              </div>
+            )
+          })}
+        </div>
+
+        {/* x labels */}
+        <div className="flex justify-around gap-2 pt-1.5">
+          {entries.map((e) => (
+            <span key={e.label} className="flex-1 truncate text-center font-mono text-[10px] text-faint">
+              {e.label}
+            </span>
+          ))}
+        </div>
+        <div className="mt-1 text-center text-[11px] text-faint">Outcome</div>
+      </div>
+    </div>
+  )
 }
 
 export default Histogram

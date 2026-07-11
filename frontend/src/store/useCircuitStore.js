@@ -1,9 +1,29 @@
 import { create } from 'zustand'
+import { DEFAULT_SHOTS } from '../config/constants'
 
 // Initialize empty circuit
 const createEmptyCircuit = (qubits, steps) => {
   return Array(qubits).fill(null).map(() => Array(steps).fill(null))
 }
+
+// -------- Theme helpers (light editorial default, persisted) --------
+const THEME_KEY = 'qyantram-theme'
+
+const readInitialTheme = () => {
+  if (typeof window === 'undefined') return 'light'
+  const stored = window.localStorage.getItem(THEME_KEY)
+  if (stored === 'light' || stored === 'dark') return stored
+  return 'light'
+}
+
+const applyTheme = (theme) => {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+}
+
+// Apply immediately on module load so there is no flash of the wrong theme.
+const INITIAL_THEME = readInitialTheme()
+applyTheme(INITIAL_THEME)
 
 const canonicalGateType = (rawType) => {
   const gateType = String(rawType || '').toUpperCase()
@@ -27,6 +47,8 @@ const canonicalGateType = (rawType) => {
     CCNOT: 'CCNOT',
     TOFFOLI: 'CCNOT',
     SWAP: 'SWAP',
+    QFT: 'QFT',
+    IQFT: 'IQFT',
     MEASURE: 'Measure',
     RESET: 'Reset',
     BARRIER: 'Barrier',
@@ -156,11 +178,28 @@ export const useCircuitStore = create((set, get) => ({
   // State
   qubits: 2,
   steps: 10,
+  shots: DEFAULT_SHOTS,
   circuit: createEmptyCircuit(2, 10),
   gates: [],
   simulationResult: null,
   isSimulating: false,
   selectedQubit: 0,
+
+  // Theme
+  theme: INITIAL_THEME,
+  toggleTheme: () =>
+    set((state) => {
+      const theme = state.theme === 'dark' ? 'light' : 'dark'
+      applyTheme(theme)
+      if (typeof window !== 'undefined') window.localStorage.setItem(THEME_KEY, theme)
+      return { theme }
+    }),
+  setTheme: (theme) =>
+    set(() => {
+      applyTheme(theme)
+      if (typeof window !== 'undefined') window.localStorage.setItem(THEME_KEY, theme)
+      return { theme }
+    }),
   history: [],
   historyIndex: -1,
   circuitCollection: [],
@@ -339,6 +378,68 @@ export const useCircuitStore = create((set, get) => ({
     })
   },
 
+  // Reassign a multi-qubit gate's control/partner wire (drag-control-point UX).
+  // role: 'control' -> controlQubit, 'control2' -> controlQubit2, 'swap' -> swapQubit
+  setGateControl: (target, step, role, newWire) => {
+    set((state) => {
+      const gate = state.circuit[target]?.[step]
+      if (!gate) return state
+      if (!Number.isInteger(newWire) || newWire < 0 || newWire >= state.qubits || newWire === target) {
+        return state
+      }
+
+      const fieldByRole = { control: 'controlQubit', control2: 'controlQubit2', swap: 'swapQubit' }
+      const field = fieldByRole[role]
+      if (!field) return state
+
+      // Prevent the two controls of a Toffoli from colliding.
+      if (role === 'control' && gate.controlQubit2 === newWire) return state
+      if (role === 'control2' && gate.controlQubit === newWire) return state
+
+      const updatedGate = { ...gate, [field]: newWire }
+      const newCircuit = state.circuit.map((row) => [...row])
+      newCircuit[target][step] = updatedGate
+
+      const newGates = state.gates.map((g) =>
+        g.qubit === target && g.step === step ? { ...g, [field]: newWire } : g
+      )
+
+      return {
+        circuit: newCircuit,
+        gates: newGates,
+        history: [
+          ...state.history.slice(0, state.historyIndex + 1),
+          { circuit: newCircuit, gates: newGates },
+        ],
+        historyIndex: state.historyIndex + 1,
+      }
+    })
+  },
+
+  // Update an angle-gate's theta in place (inline popover UX).
+  setGateTheta: (target, step, theta) => {
+    set((state) => {
+      const gate = state.circuit[target]?.[step]
+      if (!gate || !Number.isFinite(theta)) return state
+      const updatedGate = { ...gate, theta }
+      const newCircuit = state.circuit.map((row) => [...row])
+      newCircuit[target][step] = updatedGate
+      const newGates = state.gates.map((g) =>
+        g.qubit === target && g.step === step ? { ...g, theta } : g
+      )
+      return {
+        circuit: newCircuit,
+        gates: newGates,
+        history: [
+          ...state.history.slice(0, state.historyIndex + 1),
+          { circuit: newCircuit, gates: newGates },
+        ],
+        historyIndex: state.historyIndex + 1,
+      }
+    })
+  },
+
+  setShots: (shots) => set({ shots }),
   setSimulationResult: (result) => set({ simulationResult: result, isSimulating: false }),
   setIsSimulating: (isSimulating) => set({ isSimulating }),
   setSelectedQubit: (qubit) => set({ selectedQubit: qubit }),

@@ -1,98 +1,150 @@
 import React, { useState } from 'react'
-import { useDrop } from 'react-dnd'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useCircuitStore } from '../store/useCircuitStore'
+import { useSimulation } from '../hooks/useSimulation'
+import { GRID, CIRCUIT_CONFIG } from '../config/constants'
 import CircuitCell from './CircuitCell'
 
 function CircuitGrid() {
-  const { qubits, steps, circuit } = useCircuitStore()
+  const { qubits, steps, circuit, gates, setQubits, setSteps, resetCircuit } = useCircuitStore()
+  const { runSimulation, isSimulating, error } = useSimulation()
   const [hoveredCell, setHoveredCell] = useState(null)
 
+  const gateCount = gates.length
+  // Only render columns up to a little past the last used step to keep it tidy.
+  const usedMax = gates.reduce((m, g) => Math.max(m, g.step), -1)
+  const visibleSteps = Math.min(steps, Math.max(8, usedMax + 2))
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass rounded-2xl p-6"
-    >
-      <h2 className="text-xl font-bold mb-4 gradient-text">Quantum Circuit</h2>
-
-      {/* Circuit info */}
-      <div className="flex justify-between items-center mb-4 text-sm text-white/60">
-        <span>{qubits} qubits × {steps} steps</span>
-        <span className="text-quantum-blue">
-          {circuit.flat().filter((x) => x !== null).length} gates
-        </span>
-      </div>
-
-      {/* Grid with wire overlay */}
-      <div className="overflow-x-auto">
-        <div className="inline-block min-w-full">
-          {/* Qubit labels and circuit */}
-          {Array(qubits)
-            .fill(null)
-            .map((_, qubitIdx) => (
-              <motion.div
-                key={`qubit-${qubitIdx}`}
-                className="flex items-stretch mb-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ staggerChildren: 0.05, delay: qubitIdx * 0.05 }}
-              >
-                {/* Qubit label */}
-                <div className="w-12 flex items-center justify-center font-bold text-quantum-blue text-sm">
-                  q{qubitIdx}
-                </div>
-
-                {/* Wire and cells */}
-                <div className="flex items-center">
-                  {Array(steps)
-                    .fill(null)
-                    .map((_, stepIdx) => (
-                      <div key={`cell-${qubitIdx}-${stepIdx}`} className="relative">
-                        {/* Connecting wire */}
-                        <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-quantum-blue/30 to-quantum-blue/10 transform -translate-y-1/2 -z-10"></div>
-
-                        {/* Cell */}
-                        <CircuitCell
-                          qubit={qubitIdx}
-                          step={stepIdx}
-                          onHover={(isHovered) =>
-                            setHoveredCell(
-                              isHovered ? { qubit: qubitIdx, step: stepIdx } : null
-                            )
-                          }
-                          isHovered={
-                            hoveredCell?.qubit === qubitIdx &&
-                            hoveredCell?.step === stepIdx
-                          }
-                        />
-                      </div>
-                    ))}
-                </div>
-              </motion.div>
-            ))}
+    <section className="panel p-6">
+      {/* Header */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="eyebrow mb-1">Circuit Editor</div>
+          <div className="text-[13px] text-muted">
+            {qubits} qubit{qubits > 1 ? 's' : ''} · {gateCount} gate{gateCount === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="btn-solid" onClick={runSimulation} disabled={isSimulating}>
+            {isSimulating ? (
+              <>
+                <span className="spin h-3.5 w-3.5 rounded-full border-2 border-paper border-t-transparent" />
+                Running
+              </>
+            ) : (
+              <>▶ Run Simulation</>
+            )}
+          </button>
+          <button className="btn-ghost" onClick={resetCircuit}>
+            Reset
+          </button>
         </div>
       </div>
 
-      {/* Step numbers */}
-      <div className="flex mt-4 ml-12">
-        {Array(Math.min(steps, 10))
-          .fill(null)
-          .map((_, i) => (
-            <div
-              key={`step-${i}`}
-              className="w-12 h-12 flex items-center justify-center text-xs text-white/40 font-mono"
-            >
-              {i}
+      {error && (
+        <div className="mb-3 rounded-lg border border-[rgb(220_60_60/0.4)] bg-[rgb(220_60_60/0.08)] px-3 py-2 text-[13px] text-[rgb(200_50_50)]">
+          {error}
+        </div>
+      )}
+
+      {/* Grid */}
+      <div className="overflow-x-auto pb-2">
+        <div className="inline-block min-w-full">
+          {/* Step numbers (1-based) */}
+          <div className="flex" style={{ paddingLeft: GRID.LABEL_WIDTH }}>
+            {Array.from({ length: visibleSteps }).map((_, i) => (
+              <div
+                key={i}
+                className="text-center text-[11px] font-medium text-faint"
+                style={{ width: GRID.COL_WIDTH }}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+
+          {/* Wires */}
+          {Array.from({ length: qubits }).map((_, q) => (
+            <div key={q} className="flex items-center">
+              <div
+                className="flex items-center justify-end gap-1.5 pr-3 font-mono text-[12px]"
+                style={{ width: GRID.LABEL_WIDTH, height: GRID.ROW_PITCH }}
+              >
+                <span className="text-muted">q{q}</span>
+                <span className="text-faint">|0⟩</span>
+              </div>
+
+              <div className="relative flex items-center">
+                {/* continuous wire */}
+                <div
+                  className="pointer-events-none absolute left-0 right-0"
+                  style={{ top: '50%', height: 1, background: 'rgb(var(--grid-wire))', transform: 'translateY(-50%)' }}
+                />
+                {Array.from({ length: visibleSteps }).map((_, s) => (
+                  <CircuitCell
+                    key={`${q}-${s}`}
+                    qubit={q}
+                    step={s}
+                    isHovered={hoveredCell?.q === q && hoveredCell?.s === s}
+                  />
+                ))}
+              </div>
             </div>
           ))}
-        {steps > 10 && (
-          <div className="px-2 text-white/40 text-xs">
-            ... +{steps - 10} more
+
+          {/* Classical register (double line) */}
+          <div className="flex items-center">
+            <div
+              className="flex items-center justify-end pr-3 font-mono text-[12px] text-faint"
+              style={{ width: GRID.LABEL_WIDTH, height: 28 }}
+            >
+              c
+            </div>
+            <div className="relative flex items-center" style={{ height: 28, width: visibleSteps * GRID.COL_WIDTH }}>
+              <div className="absolute left-0 right-0" style={{ top: 'calc(50% - 2px)', height: 1, background: 'rgb(var(--grid-wire))' }} />
+              <div className="absolute left-0 right-0" style={{ top: 'calc(50% + 2px)', height: 1, background: 'rgb(var(--grid-wire))' }} />
+              <span className="absolute font-mono text-[10px] text-faint" style={{ left: 6, top: '55%' }}>
+                {qubits}
+              </span>
+            </div>
           </div>
-        )}
+        </div>
       </div>
-    </motion.div>
+
+      {/* Compact wire/step controls */}
+      <div className="mt-4 flex flex-wrap items-center gap-5 border-t border-line pt-3 text-[12px] text-muted">
+        <div className="flex items-center gap-2">
+          <span>Qubits</span>
+          <button
+            className="h-6 w-6 rounded border border-line hover:bg-[rgb(var(--ink)/0.05)] disabled:opacity-40"
+            onClick={() => qubits > CIRCUIT_CONFIG.MIN_QUBITS && setQubits(qubits - 1)}
+            disabled={qubits <= CIRCUIT_CONFIG.MIN_QUBITS}
+          >
+            −
+          </button>
+          <span className="w-4 text-center font-mono text-ink">{qubits}</span>
+          <button
+            className="h-6 w-6 rounded border border-line hover:bg-[rgb(var(--ink)/0.05)] disabled:opacity-40"
+            onClick={() => qubits < CIRCUIT_CONFIG.MAX_QUBITS && setQubits(qubits + 1)}
+            disabled={qubits >= CIRCUIT_CONFIG.MAX_QUBITS}
+          >
+            +
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <span>Steps</span>
+          <input
+            type="range"
+            min={CIRCUIT_CONFIG.MIN_STEPS}
+            max={CIRCUIT_CONFIG.MAX_STEPS}
+            value={steps}
+            onChange={(e) => setSteps(parseInt(e.target.value))}
+            className="accent-[color:rgb(var(--accent))]"
+          />
+          <span className="w-4 font-mono text-ink">{steps}</span>
+        </div>
+      </div>
+    </section>
   )
 }
 
