@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { formatPhaseIBM } from '../utils/formatAngle'
 import { toComplex, numQubitsFromStatevector } from '../utils/quantum'
+import PhaseLegend from './PhaseLegend'
 
 function cssVar(name, fallback) {
   if (typeof window === 'undefined') return fallback
@@ -257,22 +258,29 @@ function QSphere({ statevector, qubits }) {
   }
 
   return (
-    <div className="relative w-full" style={{ height: 340 }}>
-      <div ref={mountRef} className="h-full w-full" />
-      {pick && (
-        <InfoCard
-          p={pick.p}
-          color={pick.color}
-          onClose={() => setPick(null)}
-          style={{
-            left: pick.x,
-            top: pick.y,
-            transform: `translate(-50%, ${pick.y > 80 ? '-116%' : '16px'})`,
-          }}
-        />
-      )}
-      <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-faint">
-        Point size = probability · color = phase · drag to rotate
+    <div className="w-full">
+      <div className="relative w-full" style={{ height: 340 }}>
+        <div ref={mountRef} className="h-full w-full" />
+        {pick && (
+          <InfoCard
+            p={pick.p}
+            color={pick.color}
+            onClose={() => setPick(null)}
+            style={{
+              left: pick.x,
+              top: pick.y,
+              transform: `translate(-50%, ${pick.y > 80 ? '-116%' : '16px'})`,
+            }}
+          />
+        )}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 px-1">
+        <PhaseLegend size={52} />
+        <p className="text-right text-[10px] leading-snug text-faint">
+          Point size = probability
+          <br />
+          Color = phase · drag to rotate
+        </p>
       </div>
     </div>
   )
