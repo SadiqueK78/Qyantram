@@ -3,6 +3,7 @@ import { useDrag, useDrop } from 'react-dnd'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAI } from '../hooks/useAI'
 import { GATES, GRID, gateSymbol } from '../config/constants'
+import { formatAngle } from '../utils/formatAngle'
 
 const ANGLE_GATES = ['RX', 'RY', 'RZ', 'P']
 
@@ -166,7 +167,7 @@ function CircuitCell({ qubit, step, isHovered }) {
     : isBarrier
     ? 'Barrier — separates compilation stages, no operation (click to remove)'
     : gate?.theta !== undefined
-    ? `${gate.type} (θ=${Number(gate.theta).toFixed(4)}) — click to remove, double-click to edit`
+    ? `${gate.type} (θ=${formatAngle(Number(gate.theta))}) — click to remove, double-click to edit`
     : `${gate?.type} — click to remove`
 
   return (
@@ -288,6 +289,11 @@ function CircuitCell({ qubit, step, isHovered }) {
             onKeyDown={(e) => e.key === 'Enter' && commitAngle()}
             className="w-full rounded border border-line bg-panel px-2 py-1 text-[12px] text-ink outline-none"
           />
+          {Number.isFinite(Number(angleDraft)) && (
+            <div className="mt-1 font-mono text-[10px] text-faint">
+              = {formatAngle(Number(angleDraft))}
+            </div>
+          )}
           <div className="mt-1.5 flex justify-end gap-1">
             <button className="rounded px-2 py-0.5 text-[11px] text-faint" onClick={() => setAnglePopover(false)}>
               Cancel

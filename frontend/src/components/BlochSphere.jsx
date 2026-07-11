@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { formatAngle } from '../utils/formatAngle'
 
 // Read a CSS variable ("r g b") from the document and return a THREE color / css string.
 function cssVar(name, fallback) {
@@ -45,7 +46,7 @@ function VectorInfoCard({ v, color, onClose, style }) {
       </div>
       <div className="flex justify-between font-mono text-muted">
         <span>Phase φ</span>
-        <span className="text-ink">{v.phi.toFixed(3)} rad</span>
+        <span className="text-ink">{formatAngle(v.phi, { decimals: 3 })}</span>
       </div>
       {!v.pure && (
         <div className="mt-1 text-[10px] leading-snug text-faint">
