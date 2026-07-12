@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import Histogram from './Histogram'
 
@@ -19,16 +19,33 @@ function buildCaption(result) {
   return `Measurement is spread across ${entries.length} basis states, peaking at |${top[0][0]}⟩ (${(top[0][1] * 100).toFixed(1)}%).`
 }
 
+// An empty circuit deterministically measures |0...0⟩ every shot at the
+// current qubit count — no round-trip needed, so build that result locally
+// instead of falling back to "no data" (which is what simulationResult
+// being null would otherwise show).
+function groundResult(qubits, shots) {
+  const bitstring = '0'.repeat(Math.max(1, qubits || 1))
+  return {
+    probabilities: { [bitstring]: 1 },
+    counts: { [bitstring]: shots },
+  }
+}
+
 function MeasurementStats() {
-  const { simulationResult, shots } = useCircuitStore()
+  const { simulationResult, shots, qubits, gates } = useCircuitStore()
   const [mode, setMode] = useState('probability')
 
-  const hasResult = !!simulationResult?.probabilities
-  const caption = hasResult ? buildCaption(simulationResult) : null
+  const displayedResult = useMemo(
+    () => (gates.length === 0 ? groundResult(qubits, shots) : simulationResult),
+    [gates.length, qubits, shots, simulationResult]
+  )
+
+  const hasResult = !!displayedResult?.probabilities
+  const caption = hasResult ? buildCaption(displayedResult) : null
 
   const exportResults = () => {
-    if (!simulationResult) return
-    const blob = new Blob([JSON.stringify(simulationResult, null, 2)], { type: 'application/json' })
+    if (!displayedResult) return
+    const blob = new Blob([JSON.stringify(displayedResult, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -58,7 +75,7 @@ function MeasurementStats() {
 
       {hasResult ? (
         <>
-          <Histogram result={simulationResult} mode={mode} />
+          <Histogram result={displayedResult} mode={mode} />
           {caption && (
             <p className="mt-4 border-t border-line pt-3 font-serif text-[13px] italic leading-relaxed text-muted">
               {caption}

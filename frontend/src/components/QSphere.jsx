@@ -81,7 +81,17 @@ function QSphere({ statevector, qubits }) {
 
   const points = useMemo(() => {
     if (!Array.isArray(statevector) || statevector.length === 0) return []
-    const n = qubits ?? numQubitsFromStatevector(statevector)
+    // The statevector array's own length is authoritative: it always spans
+    // every qubit in the simulated register, including idle ones with no
+    // gates on them. The `qubits` prop comes from separate UI state and can
+    // go stale relative to the last-run result — trusting it first was
+    // truncating `dim` below the array's real size, which silently sliced
+    // off any basis state touching the idle qubit (and shortened the
+    // |bitstring⟩ labels by one character). Derive n from the data first,
+    // and only fall back to the prop/heuristic if the length isn't a clean
+    // power of two.
+    const lengthBits = Math.log2(statevector.length)
+    const n = Number.isInteger(lengthBits) ? lengthBits : qubits ?? numQubitsFromStatevector(statevector)
     if (!n) return []
     const dim = 1 << n
 
@@ -105,7 +115,22 @@ function QSphere({ statevector, qubits }) {
     return pts.filter((p) => p.prob > 1e-6)
   }, [statevector, qubits])
 
-  const pointsKey = points.map((p) => `${p.idx}:${p.prob.toFixed(4)}:${p.phi.toFixed(4)}`).join('|')
+  // Prefixed with the statevector's own dimension: for the ground state
+  // (idx 0, prob 1, phi 0), that (idx,prob,phi) triple is identical at
+  // every qubit count, so keying on point values alone let a qubit-count
+  // resize produce the exact same key — the effect below then skipped the
+  // rebuild and the sphere kept showing the old bitstring labels even
+  // though `points` itself had the right (new) data.
+  const dim = Array.isArray(statevector) ? statevector.length : 0
+  const pointsKey = `${dim}|` + points.map((p) => `${p.idx}:${p.prob.toFixed(4)}:${p.phi.toFixed(4)}`).join('|')
+
+  // A click popup opened for one circuit (e.g. "State |00⟩" at 2 qubits) has
+  // no business surviving into a different one (3 qubits, a fresh gate,
+  // etc.) — without this it just sits there showing stale data for a state
+  // that no longer corresponds to what's on screen.
+  useEffect(() => {
+    setPick(null)
+  }, [pointsKey])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -115,7 +140,6 @@ function QSphere({ statevector, qubits }) {
 
     const inkStr = cssVar('--ink', 'rgb(30,30,30)')
     const accent = new THREE.Color(cssVar('--accent', 'rgb(79,70,229)'))
-    const paperTint = new THREE.Color(cssVar('--paper', 'rgb(250,248,244)'))
 
     // Reliable theme read: index.css sets color-scheme: light/dark on :root
     // per theme, so trust that instead of guessing at a toggle class name.
@@ -126,37 +150,36 @@ function QSphere({ statevector, qubits }) {
     // The sphere is deliberately NOT tinted from --surface. In dark mode
     // --surface sits only a hair above --paper (30,30,33 vs 18,18,19), so a
     // surface-colored sphere on a near-black page reads as a void, not an
-    // object. Instead: keep the sphere pale in both themes, very sheer, so
-    // it reads mostly as a wireframe globe with just a hint of shading —
-    // closer to the reference look. Grid lines get their own light-grey
-    // tone in dark mode too, since the app's --grid-wire (tuned for a dark
-    // shell) reads as a near-black band against a pale, translucent sphere.
+    // object. Calibrated against IBM Quantum Composer's own Q-sphere: a
+    // solid, evenly-lit matte ball, not a glassy/see-through shell — pale
+    // porcelain in light mode to sit with the paper, pale lavender-grey in
+    // dark mode so it stays a distinct object against the black backdrop.
     const palette = isDark
       ? {
           shell: new THREE.Color('#dbdde6'),
-          shellOpacity: 0.22,
+          shellOpacity: 0.46,
           inner: new THREE.Color('#ffffff'),
-          innerOpacity: 0.06,
+          innerOpacity: 0.14,
           ambient: 0.55,
-          keyIntensity: 0.85,
+          keyIntensity: 0.95,
           fillColor: accent,
           fillIntensity: 0.14,
           ringColor: new THREE.Color('#aeb1c4'),
-          ringEq: 0.32,
-          ringOther: 0.17,
+          ringEq: 0.34,
+          ringOther: 0.18,
         }
       : {
-          shell: paperTint,
-          shellOpacity: 0.38,
+          shell: new THREE.Color('#f6f4f0'),
+          shellOpacity: 0.5,
           inner: new THREE.Color('#ffffff'),
-          innerOpacity: 0.12,
-          ambient: 0.5,
+          innerOpacity: 0.18,
+          ambient: 0.55,
           keyIntensity: 1.0,
           fillColor: new THREE.Color('#c7c9d6'),
           fillIntensity: 0.12,
-          ringColor: new THREE.Color('#9a9a9a'),
-          ringEq: 0.32,
-          ringOther: 0.22,
+          ringColor: new THREE.Color('#3a3a3f'),
+          ringEq: 0.34,
+          ringOther: 0.2,
         }
 
     const scene = new THREE.Scene()

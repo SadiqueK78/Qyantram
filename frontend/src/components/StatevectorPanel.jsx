@@ -1,10 +1,29 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { amplitudeRows } from '../utils/quantum'
 
+// The ground state |0...0⟩ for a given qubit count — same fallback used by
+// BlochPanel, so an empty circuit reads consistently across every panel
+// instead of only the Q-sphere reflecting the current qubit count.
+function groundStateVector(qubits) {
+  const n = Math.max(1, qubits || 1)
+  const dim = 1 << n
+  return Array.from({ length: dim }, (_, i) => ({ real: i === 0 ? 1 : 0, imag: 0 }))
+}
+
 function StatevectorPanel() {
-  const { simulationResult } = useCircuitStore()
-  const rows = amplitudeRows(simulationResult?.statevector || [])
+  const { simulationResult, qubits, gates } = useCircuitStore()
+
+  // An empty circuit has no round-trip to wait on — its statevector is
+  // known instantly (|0...0⟩ at the current qubit count), so show that
+  // instead of a stale/absent simulationResult from before a Reset or a
+  // qubit-count change.
+  const displayedStatevector = useMemo(() => {
+    if (gates.length === 0) return groundStateVector(qubits)
+    return simulationResult?.statevector || []
+  }, [gates.length, qubits, simulationResult])
+
+  const rows = amplitudeRows(displayedStatevector)
 
   return (
     <section className="panel p-6">

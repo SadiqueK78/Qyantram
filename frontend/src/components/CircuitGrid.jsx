@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
-import { useSimulation } from '../hooks/useSimulation'
+import { useAutoSimulate } from '../hooks/useAutoSimulate'
 import { GRID, CIRCUIT_CONFIG } from '../config/constants'
 import CircuitCell from './CircuitCell'
 
 function CircuitGrid() {
   const { qubits, steps, circuit, gates, setQubits, setSteps, resetCircuit } = useCircuitStore()
-  const { runSimulation, isSimulating, error } = useSimulation()
+  const { isSimulating, error } = useAutoSimulate()
   const [hoveredCell, setHoveredCell] = useState(null)
 
   const gateCount = gates.length
@@ -24,17 +24,24 @@ function CircuitGrid() {
             {qubits} qubit{qubits > 1 ? 's' : ''} · {gateCount} gate{gateCount === 1 ? '' : 's'}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="btn-solid" onClick={runSimulation} disabled={isSimulating}>
+        <div className="flex items-center gap-3">
+          {/* Live status indicator — replaces the old manual Run button. The
+              circuit now re-simulates automatically on any edit (gate
+              add/remove/move, qubit count change), so there's nothing left
+              to click; this just reflects current status. */}
+          <div className="flex items-center gap-1.5 text-[12px] text-muted">
             {isSimulating ? (
               <>
-                <span className="spin h-3.5 w-3.5 rounded-full border-2 border-paper border-t-transparent" />
-                Running
+                <span className="spin h-3 w-3 rounded-full border-2 border-[color:rgb(var(--accent))] border-t-transparent" />
+                <span>Simulating…</span>
               </>
             ) : (
-              <>▶ Run Simulation</>
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-[color:rgb(var(--accent))]" />
+                <span>Live</span>
+              </>
             )}
-          </button>
+          </div>
           <button className="btn-ghost" onClick={resetCircuit}>
             Reset
           </button>
