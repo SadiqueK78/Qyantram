@@ -65,6 +65,19 @@ function InfoCard({ p, color, onClose, style }) {
 function QSphere({ statevector, qubits }) {
   const mountRef = useRef(null)
   const [pick, setPick] = useState(null)
+  const [themeTick, setThemeTick] = useState(0)
+
+  // The scene below bakes CSS colors into materials/canvas textures once per
+  // build. Watch <html> for the class/attribute the theme toggle flips so we
+  // rebuild (and re-read fresh --ink / --grid-wire values) on every switch
+  // between light and dark, not just on first mount.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const el = document.documentElement
+    const observer = new MutationObserver(() => setThemeTick((t) => t + 1))
+    observer.observe(el, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] })
+    return () => observer.disconnect()
+  }, [])
 
   const points = useMemo(() => {
     if (!Array.isArray(statevector) || statevector.length === 0) return []
@@ -100,8 +113,51 @@ function QSphere({ statevector, qubits }) {
     const width = mount.clientWidth || 300
     const height = 340
 
-    const wire = new THREE.Color(cssVar('--grid-wire', 'rgb(200,200,200)'))
     const inkStr = cssVar('--ink', 'rgb(30,30,30)')
+    const accent = new THREE.Color(cssVar('--accent', 'rgb(79,70,229)'))
+    const paperTint = new THREE.Color(cssVar('--paper', 'rgb(250,248,244)'))
+
+    // Reliable theme read: index.css sets color-scheme: light/dark on :root
+    // per theme, so trust that instead of guessing at a toggle class name.
+    const isDark =
+      typeof document !== 'undefined' &&
+      getComputedStyle(document.documentElement).colorScheme.includes('dark')
+
+    // The sphere is deliberately NOT tinted from --surface. In dark mode
+    // --surface sits only a hair above --paper (30,30,33 vs 18,18,19), so a
+    // surface-colored sphere on a near-black page reads as a void, not an
+    // object. Instead: keep the sphere pale in both themes, very sheer, so
+    // it reads mostly as a wireframe globe with just a hint of shading —
+    // closer to the reference look. Grid lines get their own light-grey
+    // tone in dark mode too, since the app's --grid-wire (tuned for a dark
+    // shell) reads as a near-black band against a pale, translucent sphere.
+    const palette = isDark
+      ? {
+          shell: new THREE.Color('#dbdde6'),
+          shellOpacity: 0.22,
+          inner: new THREE.Color('#ffffff'),
+          innerOpacity: 0.06,
+          ambient: 0.55,
+          keyIntensity: 0.85,
+          fillColor: accent,
+          fillIntensity: 0.14,
+          ringColor: new THREE.Color('#aeb1c4'),
+          ringEq: 0.32,
+          ringOther: 0.17,
+        }
+      : {
+          shell: paperTint,
+          shellOpacity: 0.38,
+          inner: new THREE.Color('#ffffff'),
+          innerOpacity: 0.12,
+          ambient: 0.5,
+          keyIntensity: 1.0,
+          fillColor: new THREE.Color('#c7c9d6'),
+          fillIntensity: 0.12,
+          ringColor: new THREE.Color('#9a9a9a'),
+          ringEq: 0.32,
+          ringOther: 0.22,
+        }
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100)
@@ -124,63 +180,103 @@ function QSphere({ statevector, qubits }) {
     controls.minDistance = 3.2
     controls.maxDistance = 7
 
-    // Soft, lit, solid-looking sphere (IBM's Q-sphere reads as a pale glass
-    // ball with gentle gradient shading, not a flat translucent shell).
-    scene.add(new THREE.AmbientLight(0xffffff, 0.75))
-    const key = new THREE.DirectionalLight(0xffffff, 0.6)
-    key.position.set(2, 3, 2)
+    // Soft, matte, solid-looking sphere — pale porcelain ball with a gentle
+    // top-to-bottom gradient (bright highlight near the pole, soft shadow
+    // near the lower rim), closer to IBM's reference rendering than a glassy
+    // translucent shell.
+    scene.add(new THREE.AmbientLight(0xffffff, palette.ambient))
+    const key = new THREE.DirectionalLight(0xffffff, palette.keyIntensity)
+    key.position.set(1.4, 3.2, 2.2)
     scene.add(key)
+    const fill = new THREE.DirectionalLight(palette.fillColor, palette.fillIntensity)
+    fill.position.set(-2, -1.4, -1.2)
+    scene.add(fill)
 
     const shell = new THREE.Mesh(
       new THREE.SphereGeometry(1, 64, 64),
       new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: palette.shell,
         transparent: true,
-        opacity: 0.16,
-        roughness: 0.9,
+        opacity: palette.shellOpacity,
+        roughness: 1,
         metalness: 0,
         side: THREE.FrontSide,
         depthWrite: false,
       })
     )
     scene.add(shell)
+    // Faint inner shell adds depth without a hard second silhouette edge.
+    const innerShell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.985, 48, 48),
+      new THREE.MeshStandardMaterial({
+        color: palette.inner,
+        transparent: true,
+        opacity: palette.innerOpacity,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.BackSide,
+        depthWrite: false,
+      })
+    )
+    scene.add(innerShell)
 
-    // three great circles
-    const ringMat = new THREE.LineBasicMaterial({ color: wire, transparent: true, opacity: 0.28 })
-    const circlePts = []
-    for (let i = 0; i <= 96; i++) {
-      const t = (i / 96) * Math.PI * 2
-      circlePts.push(new THREE.Vector3(Math.cos(t), Math.sin(t), 0))
+    // Thin latitude rings (horizontal, like IBM's Q-sphere), fading toward
+    // the poles. No meridian or axis lines, to keep the sphere reading as a
+    // clean, softly-shaded ball rather than a wireframe globe.
+    const ringMat = (opacity) => new THREE.LineBasicMaterial({ color: palette.ringColor, transparent: true, opacity })
+    const latitudeRing = (yLevel, opacity) => {
+      const r = Math.sqrt(Math.max(0, 1 - yLevel * yLevel))
+      const pts = []
+      for (let i = 0; i <= 96; i++) {
+        const t = (i / 96) * Math.PI * 2
+        pts.push(new THREE.Vector3(r * Math.cos(t), yLevel, r * Math.sin(t)))
+      }
+      const geom = new THREE.BufferGeometry().setFromPoints(pts)
+      scene.add(new THREE.LineLoop(geom, ringMat(opacity)))
     }
-    const baseCircle = new THREE.BufferGeometry().setFromPoints(circlePts)
-    const eqGeom = baseCircle.clone().rotateX(Math.PI / 2)
-    scene.add(new THREE.LineLoop(eqGeom, ringMat))
-    scene.add(new THREE.LineLoop(baseCircle.clone(), ringMat))
-    scene.add(new THREE.LineLoop(baseCircle.clone().rotateY(Math.PI / 2), ringMat))
+    ;[-0.55, 0, 0.55].forEach((y) => latitudeRing(y, y === 0 ? palette.ringEq : palette.ringOther))
 
-    // axes
-    const axisMat = new THREE.LineBasicMaterial({ color: wire, transparent: true, opacity: 0.4 })
-    const axis = (a, b) => new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), axisMat)
-    scene.add(axis(new THREE.Vector3(0, -1.15, 0), new THREE.Vector3(0, 1.15, 0)))
-    scene.add(axis(new THREE.Vector3(-1.15, 0, 0), new THREE.Vector3(1.15, 0, 0)))
-    scene.add(axis(new THREE.Vector3(0, 0, -1.15), new THREE.Vector3(0, 0, 1.15)))
-
-    // text sprite labels
+    // text sprite labels. Baked as a bitmap, so instead of trusting a single
+    // ink color to always contrast with whatever's behind it (sphere, page
+    // bg, either theme), draw a small rounded pill behind the glyphs, in the
+    // opposite tone from the text color's own luminance — keeps labels
+    // clearly legible against a pale, translucent sphere in either theme.
     const makeLabel = (text, pos, color = inkStr, scale = 0.4) => {
       const canvas = document.createElement('canvas')
-      canvas.width = 160
-      canvas.height = 64
+      canvas.width = 220
+      canvas.height = 84
       const ctx = canvas.getContext('2d')
-      ctx.fillStyle = color
-      ctx.font = '600 30px "IBM Plex Mono", monospace'
+      ctx.font = '600 32px "IBM Plex Mono", monospace'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(text, 80, 32)
+
+      const nums = (color.match(/[\d.]+/g) || [30, 30, 30]).map(Number)
+      const [r, g, b] = nums
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+      const pillBg = luminance > 0.6 ? 'rgba(10,11,16,0.55)' : 'rgba(255,255,255,0.8)'
+
+      const cx = canvas.width / 2
+      const cy = canvas.height / 2
+      const textWidth = ctx.measureText(text).width
+      const pillW = Math.min(canvas.width - 8, textWidth + 28)
+      const pillH = 40
+      ctx.fillStyle = pillBg
+      if (ctx.roundRect) {
+        ctx.beginPath()
+        ctx.roundRect(cx - pillW / 2, cy - pillH / 2, pillW, pillH, 10)
+        ctx.fill()
+      } else {
+        ctx.fillRect(cx - pillW / 2, cy - pillH / 2, pillW, pillH)
+      }
+
+      ctx.fillStyle = color
+      ctx.fillText(text, cx, cy)
+
       const tex = new THREE.CanvasTexture(canvas)
       tex.needsUpdate = true
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
       sprite.position.copy(pos)
-      sprite.scale.set(scale, scale * 0.4, 1)
+      sprite.scale.set(scale, scale * (canvas.height / canvas.width), 1)
       scene.add(sprite)
     }
 
@@ -194,7 +290,7 @@ function QSphere({ statevector, qubits }) {
       const color = new THREE.Color(colorHex)
       const r = 0.045 + Math.sqrt(p.prob) * 0.09
 
-      const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 })
+      const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 })
       scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir]), lineMat))
 
       const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), new THREE.MeshBasicMaterial({ color }))
@@ -251,7 +347,7 @@ function QSphere({ statevector, qubits }) {
       renderer.dispose()
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
     }
-  }, [pointsKey])
+  }, [pointsKey, themeTick])
 
   if (points.length === 0) {
     return <div className="py-10 text-center text-[13px] text-muted">No statevector to plot</div>
