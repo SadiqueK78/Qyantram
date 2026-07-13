@@ -135,6 +135,11 @@ const buildCircuitState = (parsedCircuit) => {
       ...(g.control2 !== undefined && { controlQubit2: Number(g.control2) }),
       ...(g.swapQubit !== undefined && { swapQubit: Number(g.swapQubit) }),
       ...(g.swap_with !== undefined && { swapQubit: Number(g.swap_with) }),
+      ...(g.partnerQubit !== undefined && { partnerQubit: Number(g.partnerQubit) }),
+      ...(g.qftQubit !== undefined && { partnerQubit: Number(g.qftQubit) }),
+      ...(Array.isArray(g.targets) && g.targets.length > 1 && {
+        partnerQubit: Number(g.targets.find((t) => Number(t) !== qubit) ?? g.targets[1]),
+      }),
       ...(g.theta !== undefined && { theta: Number(g.theta) }),
       ...(g.angle !== undefined && { theta: Number(g.angle) }),
       ...(g.phase !== undefined && { theta: Number(g.phase) }),
@@ -156,6 +161,13 @@ const buildCircuitState = (parsedCircuit) => {
     }
 
     if (gate.type === 'SWAP' && (!Number.isInteger(gate.swapQubit) || gate.swapQubit === qubit)) {
+      return
+    }
+
+    if (
+      (gate.type === 'QFT' || gate.type === 'IQFT') &&
+      (!Number.isInteger(gate.partnerQubit) || gate.partnerQubit === qubit || gate.partnerQubit < 0 || gate.partnerQubit >= parsedCircuit.qubits)
+    ) {
       return
     }
 
@@ -255,6 +267,10 @@ export const useCircuitStore = create((set, get) => ({
         return state
       }
 
+      if ((gate.type === 'QFT' || gate.type === 'IQFT') && state.qubits < 2) {
+        return state
+      }
+
       const newCircuit = state.circuit.map((row) => [...row])
 
       let normalizedGate = { ...gate }
@@ -298,6 +314,15 @@ export const useCircuitStore = create((set, get) => ({
         }
 
         normalizedGate = { ...gate, swapQubit }
+      } else if (gate.type === 'QFT' || gate.type === 'IQFT') {
+        const fallbackPartner = qubit > 0 ? qubit - 1 : 1
+        const partnerQubit = Number.isInteger(gate.partnerQubit) ? gate.partnerQubit : fallbackPartner
+
+        if (partnerQubit < 0 || partnerQubit >= state.qubits || partnerQubit === qubit) {
+          return state
+        }
+
+        normalizedGate = { ...gate, partnerQubit }
       }
 
       newCircuit[qubit][step] = normalizedGate
@@ -388,7 +413,7 @@ export const useCircuitStore = create((set, get) => ({
         return state
       }
 
-      const fieldByRole = { control: 'controlQubit', control2: 'controlQubit2', swap: 'swapQubit' }
+      const fieldByRole = { control: 'controlQubit', control2: 'controlQubit2', swap: 'swapQubit', partner: 'partnerQubit' }
       const field = fieldByRole[role]
       if (!field) return state
 

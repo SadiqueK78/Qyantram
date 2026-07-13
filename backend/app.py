@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from qiskit import QuantumCircuit
-from qiskit.circuit.library import QFT
+from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
 import numpy as np
 from typing import List, Dict, Any
@@ -27,6 +26,37 @@ CORS(app, resources={
 })
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def build_qft_block_gate(n: int, inverse: bool = False):
+    """
+    Build an n-qubit QFT (or inverse QFT) as a self-contained gate, using the
+    same decomposition Qniverse shows for its 2-qubit `qft2` block:
+
+        gate qft2 a, b {
+            h b;
+            cu1(pi/2) a, b;
+            h a;
+            swap a, b;
+        }
+
+    which is one valid ordering of the standard QFT circuit: Hadamards
+    interleaved with controlled-phase rotations, finished by a reversal
+    swap. This builds that same shape for any n, on a small local
+    sub-circuit, so it can be appended onto exactly the qubits the user
+    dropped the block on — never the whole register.
+    """
+    sub = QuantumCircuit(n, name=('IQFT' if inverse else 'QFT'))
+    for j in range(n):
+        sub.h(j)
+        for k in range(j + 1, n):
+            angle = np.pi / (2 ** (k - j))
+            sub.cp(angle, k, j)
+    for i in range(n // 2):
+        sub.swap(i, n - 1 - i)
+
+    gate = sub.to_gate(label=('IQFT' if inverse else 'QFT'))
+    return gate.inverse() if inverse else gate
+
 
 # Quantum circuit builder and simulator
 class QuantumCircuitBuilder:
@@ -113,16 +143,26 @@ class QuantumCircuitBuilder:
                         qc.barrier(target)
                 elif gate_type == 'RESET':
                     qc.reset(target)
-                elif gate_type == 'QFT':
-                    # Quantum Fourier Transform applied across the whole register.
-                    n = qc.num_qubits
-                    qc.append(QFT(num_qubits=n, do_swaps=True).to_gate(label='QFT'),
-                              range(n))
-                elif gate_type == 'IQFT':
-                    # Inverse Quantum Fourier Transform across the whole register.
-                    n = qc.num_qubits
-                    qc.append(QFT(num_qubits=n, do_swaps=True).inverse().to_gate(label='IQFT'),
-                              range(n))
+                elif gate_type in ('QFT', 'IQFT'):
+                    # A QFT/IQFT block scoped to the specific qubits it was
+                    # dropped across — matches the Qniverse "qft2 a, b" block
+                    # (a = top wire, b = bottom wire), not the whole register.
+                    targets = gate.get('targets')
+                    if not targets:
+                        a = gate.get('target')
+                        b = gate.get('qftQubit', gate.get('partnerQubit', gate.get('partner')))
+                        targets = [a, b]
+                    targets = [int(t) for t in targets if t is not None]
+
+                    if len(targets) < 2:
+                        raise ValueError(f'{gate_type} requires at least 2 target qubits')
+                    if len(set(targets)) != len(targets):
+                        raise ValueError(f'{gate_type} target qubits must be distinct')
+                    if any(t < 0 or t >= qc.num_qubits for t in targets):
+                        raise ValueError(f'{gate_type} target qubit out of range')
+
+                    qft_gate = build_qft_block_gate(len(targets), inverse=(gate_type == 'IQFT'))
+                    qc.append(qft_gate, targets)
                 elif gate_type == 'MEASURE':
                     pass  # Measurement will be added after all gates
                 else:
@@ -157,7 +197,11 @@ class QuantumCircuitBuilder:
             
             # Simulate statevector
             simulator_sv = AerSimulator(method='statevector')
-            job_sv = simulator_sv.run(qc_statevector)
+            # Composite gates (e.g. the QFT/IQFT block, built via to_gate())
+            # are opaque instructions to Aer until transpiled down to its
+            # basis gate set — run() does not do this implicitly.
+            tqc_statevector = transpile(qc_statevector, simulator_sv)
+            job_sv = simulator_sv.run(tqc_statevector)
             result_sv = job_sv.result()
             
             # Get statevector
@@ -169,7 +213,8 @@ class QuantumCircuitBuilder:
             
             # Simulate measurement probabilities using automatic method
             simulator_qasm = AerSimulator(method='automatic')
-            job_qasm = simulator_qasm.run(qc, shots=shots)
+            tqc_qasm = transpile(qc, simulator_qasm)
+            job_qasm = simulator_qasm.run(tqc_qasm, shots=shots)
             result_qasm = job_qasm.result()
             counts = result_qasm.get_counts(0)
             
@@ -374,6 +419,18 @@ def get_available_gates():
             'type': 'SWAP',
             'name': 'SWAP',
             'description': 'Swap states of two qubits',
+            'qubits_required': 2
+        },
+        {
+            'type': 'QFT',
+            'name': 'QFT',
+            'description': 'Quantum Fourier Transform block (H, controlled-phase, swap) across the target qubits',
+            'qubits_required': 2
+        },
+        {
+            'type': 'IQFT',
+            'name': 'Inverse QFT',
+            'description': 'Inverse Quantum Fourier Transform block across the target qubits',
             'qubits_required': 2
         },
         {

@@ -36,6 +36,7 @@ export function useSimulation() {
             control2: gate.controlQubit2,
           }),
           ...(gate.type === 'SWAP' && { swap_with: gate.swapQubit }),
+          ...((gate.type === 'QFT' || gate.type === 'IQFT') && { qftQubit: gate.partnerQubit }),
           ...(gate.theta !== undefined && { theta: gate.theta }),
         })
       })
