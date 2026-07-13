@@ -44,13 +44,21 @@ def build_qft_block_gate(n: int, inverse: bool = False):
     swap. This builds that same shape for any n, on a small local
     sub-circuit, so it can be appended onto exactly the qubits the user
     dropped the block on — never the whole register.
+
+    The rotation cascade must run from the HIGHEST-indexed target down to
+    the lowest (m = n-1 .. 0), each H followed by controlled-phase rotations
+    from every lower qubit into it — not ascending. Verified numerically
+    against Qiskit's QFT(n, do_swaps=True) reference for n=2..5; ascending
+    order looks superficially fine (uniform |QFT|00..0>| probabilities,
+    self-inverse round-trips) but produces the wrong relative phases, which
+    only shows up once you check the actual unitary, not just probabilities.
     """
     sub = QuantumCircuit(n, name=('IQFT' if inverse else 'QFT'))
-    for j in range(n):
-        sub.h(j)
-        for k in range(j + 1, n):
-            angle = np.pi / (2 ** (k - j))
-            sub.cp(angle, k, j)
+    for m in reversed(range(n)):
+        sub.h(m)
+        for control in range(m):
+            angle = np.pi / (2 ** (m - control))
+            sub.cp(angle, control, m)
     for i in range(n // 2):
         sub.swap(i, n - 1 - i)
 

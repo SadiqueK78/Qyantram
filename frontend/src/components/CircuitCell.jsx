@@ -5,6 +5,7 @@ import { useAI } from '../hooks/useAI'
 import { GATES, GRID, gateSymbol } from '../config/constants'
 import { formatAngle } from '../utils/formatAngle'
 import QFTExpandModal from './QFTExpandModal'
+import QFTEditGateModal from './QFTEditGateModal'
 
 const ANGLE_GATES = ['RX', 'RY', 'RZ', 'P']
 
@@ -45,7 +46,7 @@ function ControlNode({ target, step, role, offsetRows, kind }) {
 }
 
 function CircuitCell({ qubit, step, isHovered }) {
-  const { circuit, qubits, addGate, removeGate, setGateControl, setGateTheta, highlightedStep, beginnerMode } =
+  const { circuit, qubits, addGate, removeGate, setGateControl, setGateTheta, setGateTargets, highlightedStep, beginnerMode } =
     useCircuitStore()
   const { handleExplainGate } = useAI()
   const gate = circuit[qubit]?.[step]
@@ -55,6 +56,7 @@ function CircuitCell({ qubit, step, isHovered }) {
   const [anglePopover, setAnglePopover] = useState(false)
   const [angleDraft, setAngleDraft] = useState('1.5708')
   const [qftExpandOpen, setQftExpandOpen] = useState(false)
+  const [qftEditOpen, setQftEditOpen] = useState(false)
 
   // Default partner wire for a freshly dropped multi-qubit gate (no prompts).
   const defaultPartner = qubit === 0 ? 1 : qubit - 1
@@ -94,7 +96,7 @@ function CircuitCell({ qubit, step, isHovered }) {
         }
         if (type === 'QFT' || type === 'IQFT') {
           if (qubits < 2) return
-          addGate(qubit, step, { type, partnerQubit: defaultPartner })
+          addGate(qubit, step, { type, targets: [qubit, defaultPartner] })
           return
         }
         if (ANGLE_GATES.includes(type)) {
@@ -137,22 +139,11 @@ function CircuitCell({ qubit, step, isHovered }) {
       if (Number.isInteger(gate.controlQubit2)) partners.push({ wire: gate.controlQubit2, role: 'control2', kind: 'dot' })
     } else if (gate.type === 'SWAP' && Number.isInteger(gate.swapQubit)) {
       partners.push({ wire: gate.swapQubit, role: 'swap', kind: 'swap' })
-    } else if ((gate.type === 'QFT' || gate.type === 'IQFT') && Number.isInteger(gate.partnerQubit)) {
-      partners.push({ wire: gate.partnerQubit, role: 'partner', kind: 'block' })
     }
 
     partners.forEach((p) => {
       if (p.wire === qubit) return
       const delta = p.wire - qubit // rows away (negative = up)
-      if (p.kind === 'block') {
-        // The QFT/IQFT block itself (rendered below) already spans the two
-        // wires visually, so just drop a small draggable handle on the
-        // partner wire to let it be re-homed — no separate connecting line.
-        connectors.push(
-          <ControlNode key={p.role} target={qubit} step={step} role={p.role} offsetRows={delta} kind="dot" />
-        )
-        return
-      }
       connectors.push(
         <React.Fragment key={p.role}>
           <div
@@ -175,15 +166,15 @@ function CircuitCell({ qubit, step, isHovered }) {
   const isBarrier = gate?.type === 'Barrier'
   const isMeasure = gate?.type === 'Measure'
 
-  // QFT/IQFT render as a single box spanning from this wire to its partner
-  // wire (Qniverse-style "qft2 a, b" block), rather than a per-cell tile.
-  const isQFTBlock = !!gate && (gate.type === 'QFT' || gate.type === 'IQFT') && Number.isInteger(gate.partnerQubit)
-  const qftDelta = isQFTBlock ? gate.partnerQubit - qubit : 0
-  const qftSpanHeight = GRID.CELL + Math.abs(qftDelta) * GRID.ROW_PITCH
-  const qftSpanTop =
-    qftDelta > 0
-      ? `calc(50% - ${GRID.CELL / 2}px)`
-      : `calc(50% - ${Math.abs(qftDelta) * GRID.ROW_PITCH + GRID.CELL / 2}px)`
+  // QFT/IQFT render as a single box spanning every wire it acts on
+  // (Qniverse-style "qft2 a, b" block), rather than a per-cell tile. The
+  // gate object always lives at the topmost target row (store invariant),
+  // so this cell — when it holds one — is always the box's top edge.
+  const isQFTBlock =
+    !!gate && (gate.type === 'QFT' || gate.type === 'IQFT') && Array.isArray(gate.targets) && gate.targets.length >= 2
+  const qftTargets = isQFTBlock ? gate.targets : []
+  const qftSpanHeight = isQFTBlock ? GRID.CELL + (qftTargets.length - 1) * GRID.ROW_PITCH : 0
+  const qftSpanTop = `calc(50% - ${GRID.CELL / 2}px)`
 
   const removeThis = (e) => {
     e.stopPropagation()
@@ -283,38 +274,66 @@ function CircuitCell({ qubit, step, isHovered }) {
         )
       })()}
 
-      {/* QFT/IQFT block: one solid box spanning both wires it acts on, with
-          the top wire labeled "a" and the bottom wire "b" — matching the
-          Qniverse "qft2 a, b" block, and reflecting that the backend runs
-          it only across these two qubits, never the whole register. */}
+      {/* QFT/IQFT block: one solid box spanning every wire it acts on, with
+          each wire labeled a/b/c/... top to bottom — matching the Qniverse
+          "qft2 a, b" block, generalized to any contiguous qubit range. */}
       {isQFTBlock && (
         <div
           onClick={(e) => {
             e.stopPropagation()
             setQftExpandOpen(true)
           }}
-          title={`${gate.type === 'IQFT' ? 'Inverse QFT' : 'QFT'} block on q${Math.min(qubit, gate.partnerQubit)}–q${Math.max(
-            qubit,
-            gate.partnerQubit
-          )} — click to expand, drag the dot to change the second qubit`}
-          className={`gate-tile ${tileTone} absolute left-1/2 flex -translate-x-1/2 cursor-pointer flex-col items-center justify-between py-1`}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            setQftEditOpen(true)
+          }}
+          title={`${gate.type === 'IQFT' ? 'Inverse QFT' : 'QFT'} block on q${qftTargets[0]}–q${qftTargets[qftTargets.length - 1]} — click to expand, double-click to edit qubits`}
+          className={`gate-tile ${tileTone} absolute left-1/2 -translate-x-1/2 cursor-pointer`}
           style={{ width: GRID.CELL, top: qftSpanTop, height: qftSpanHeight, zIndex: 5 }}
         >
-          <span className="font-mono text-[9px] leading-none opacity-80">a</span>
-          <span className="font-mono text-[10px] font-semibold leading-none">
+          {/* Each label sits exactly on its wire's crossing point — the same
+              GRID.CELL/2 offset a normal single-cell tile uses to center on
+              its own wire — regardless of how many rows the block spans. */}
+          {qftTargets.map((_, i) => (
+            <span
+              key={i}
+              className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[9px] leading-none opacity-80"
+              style={{ top: i * GRID.ROW_PITCH + GRID.CELL / 2 }}
+            >
+              {String.fromCharCode(97 + i)}
+            </span>
+          ))}
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] font-semibold leading-none">
             {gate.type === 'IQFT' ? 'QFT†' : 'QFT'}
           </span>
-          <span className="font-mono text-[9px] leading-none opacity-80">b</span>
         </div>
       )}
 
       {isQFTBlock && qftExpandOpen && (
         <QFTExpandModal
           type={gate.type}
+          targets={qftTargets}
           onClose={() => setQftExpandOpen(false)}
+          onEdit={() => {
+            setQftExpandOpen(false)
+            setQftEditOpen(true)
+          }}
           onRemove={() => {
             setQftExpandOpen(false)
             removeGate(qubit, step)
+          }}
+        />
+      )}
+
+      {isQFTBlock && qftEditOpen && (
+        <QFTEditGateModal
+          type={gate.type}
+          qubits={qubits}
+          currentTargets={qftTargets}
+          onClose={() => setQftEditOpen(false)}
+          onSave={(newTargets) => {
+            setGateTargets(qubit, step, newTargets)
+            setQftEditOpen(false)
           }}
         />
       )}

@@ -2,35 +2,82 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 // -----------------------------------------------------------------------------
-// Static decomposition data for the 2-qubit QFT / IQFT block, matching the
-// backend's build_qft_block_gate() exactly:
-//   QFT  = h(b); cp(+pi/2, a, b); h(a); swap(a, b)
-//   IQFT = swap(a, b); h(a); cp(-pi/2, a, b); h(b)
-// (a = top wire / q0, b = bottom wire / q1). Barriers below are purely
-// visual stage separators, mirroring how Qniverse groups the steps.
+// Generates the elementary-gate decomposition for an n-qubit QFT/IQFT block,
+// matching build_qft_block_gate() in the backend exactly:
+//
+//   for m in reversed(range(n)):
+//       h(m)
+//       for control in range(m):
+//           cp(pi / 2**(m-control), control, m)
+//   for i in range(n // 2):
+//       swap(i, n-1-i)
+//
+// (verified against Qiskit's QFT(n, do_swaps=True) reference for n=2..5).
+// IQFT reverses the whole op list and negates every CP angle (H and SWAP are
+// self-inverse) — exactly what Gate.inverse() does to this same circuit on
+// the backend.
 // -----------------------------------------------------------------------------
-const QFT_STEPS = [
-  { q0: null, q1: { kind: 'H' } },
-  { q0: { kind: 'dot' }, q1: { kind: 'P', label: '+π/2' } },
-  { barrier: true },
-  { q0: { kind: 'H' }, q1: null },
-  { barrier: true },
-  { q0: { kind: 'swap' }, q1: { kind: 'swap' } },
-]
+function buildOps(n) {
+  const rotation = []
+  for (let m = n - 1; m >= 0; m--) {
+    rotation.push({ kind: 'H', row: m })
+    for (let control = 0; control < m; control++) {
+      rotation.push({ kind: 'CP', control, target: m, theta: Math.PI / 2 ** (m - control) })
+    }
+  }
+  const swaps = []
+  for (let i = 0; i < Math.floor(n / 2); i++) {
+    swaps.push({ kind: 'SWAP', a: i, b: n - 1 - i })
+  }
+  return { rotation, swaps }
+}
 
-const IQFT_STEPS = [
-  { q0: { kind: 'swap' }, q1: { kind: 'swap' } },
-  { barrier: true },
-  { q0: { kind: 'H' }, q1: null },
-  { q0: { kind: 'dot' }, q1: { kind: 'P', label: '−π/2' } },
-  { barrier: true },
-  { q0: null, q1: { kind: 'H' } },
-]
+function angleLabel(theta) {
+  const sign = theta < 0 ? '−' : '+'
+  const k = Math.round(Math.log2(Math.PI / Math.abs(theta)))
+  return k === 0 ? `${sign}π` : `${sign}π/${2 ** k}`
+}
 
-const COL_W = 60
+function buildColumns(n, inverse) {
+  const { rotation, swaps } = buildOps(n)
+  const opsInOrder = inverse
+    ? [
+        ...swaps.slice().reverse(),
+        { barrier: true },
+        ...rotation
+          .slice()
+          .reverse()
+          .map((op) => (op.kind === 'CP' ? { ...op, theta: -op.theta } : op)),
+      ]
+    : [...rotation, { barrier: true }, ...swaps]
+
+  return opsInOrder.map((op) => {
+    if (op.barrier) return { barrier: true }
+    if (op.kind === 'H') return { ops: [{ row: op.row, kind: 'H' }] }
+    if (op.kind === 'CP') {
+      return {
+        ops: [
+          { row: op.control, kind: 'dot' },
+          { row: op.target, kind: 'P', label: angleLabel(op.theta) },
+        ],
+        connector: { from: op.control, to: op.target, color: 'dot' },
+      }
+    }
+    // SWAP
+    return {
+      ops: [
+        { row: op.a, kind: 'swap' },
+        { row: op.b, kind: 'swap' },
+      ],
+      connector: { from: op.a, to: op.b, color: 'swap' },
+    }
+  })
+}
+
+const COL_W = 56
 const BARRIER_W = 26
-const ROW_H = 64
-const CELL = 34
+const ROW_H = 60
+const CELL = 32
 
 const COLORS = {
   h: '#e15c5c',
@@ -41,15 +88,15 @@ const COLORS = {
   barrier: 'rgb(var(--faint, 160 160 160))',
 }
 
-function colWidth(step) {
-  return step.barrier ? BARRIER_W : COL_W
+function colWidth(col) {
+  return col.barrier ? BARRIER_W : COL_W
 }
 
 function Tile({ kind, label }) {
   if (kind === 'H') {
     return (
       <div
-        className="flex items-center justify-center rounded-md font-mono text-[15px] font-bold text-white shadow-sm"
+        className="flex items-center justify-center rounded-md font-mono text-[14px] font-bold text-white shadow-sm"
         style={{ width: CELL, height: CELL, background: COLORS.h }}
       >
         H
@@ -60,19 +107,19 @@ function Tile({ kind, label }) {
     return (
       <div
         className="flex flex-col items-center justify-center rounded-md text-center font-mono font-bold text-white shadow-sm leading-none"
-        style={{ width: CELL, height: CELL, background: COLORS.p, fontSize: 11 }}
+        style={{ width: CELL, height: CELL, background: COLORS.p, fontSize: 10 }}
       >
         <span>P</span>
-        <span style={{ fontSize: 8, fontWeight: 600 }}>({label})</span>
+        <span style={{ fontSize: 7, fontWeight: 600 }}>({label})</span>
       </div>
     )
   }
   if (kind === 'dot') {
-    return <div className="rounded-full" style={{ width: 12, height: 12, background: COLORS.dot }} />
+    return <div className="rounded-full" style={{ width: 11, height: 11, background: COLORS.dot }} />
   }
   if (kind === 'swap') {
     return (
-      <div className="flex items-center justify-center font-bold" style={{ width: CELL, height: CELL, color: COLORS.swap, fontSize: 22 }}>
+      <div className="flex items-center justify-center font-bold" style={{ width: CELL, height: CELL, color: COLORS.swap, fontSize: 20 }}>
         ×
       </div>
     )
@@ -80,23 +127,23 @@ function Tile({ kind, label }) {
   return null
 }
 
-function MiniCircuit({ steps }) {
-  const width = steps.reduce((w, s) => w + colWidth(s), 0)
-  const height = ROW_H * 2
+function MiniCircuit({ n, columns }) {
+  const width = columns.reduce((w, c) => w + colWidth(c), 0)
+  const height = ROW_H * n
 
   let left = 0
-  const columns = steps.map((step, i) => {
-    const w = colWidth(step)
+  const positioned = columns.map((col) => {
+    const w = colWidth(col)
     const x = left
     left += w
-    return { step, x, w, i }
+    return { col, x, w }
   })
 
   return (
     <div className="overflow-x-auto">
       <div className="relative" style={{ width: width + 8, height }}>
         {/* wires */}
-        {[0, 1].map((row) => (
+        {Array.from({ length: n }, (_, row) => (
           <div
             key={row}
             className="absolute left-0 right-0"
@@ -105,15 +152,18 @@ function MiniCircuit({ steps }) {
         ))}
 
         {/* row labels */}
-        <span className="absolute font-mono text-[11px] text-faint" style={{ left: -22, top: ROW_H * 0 + ROW_H / 2 - 7 }}>
-          q0
-        </span>
-        <span className="absolute font-mono text-[11px] text-faint" style={{ left: -22, top: ROW_H * 1 + ROW_H / 2 - 7 }}>
-          q1
-        </span>
+        {Array.from({ length: n }, (_, row) => (
+          <span
+            key={row}
+            className="absolute font-mono text-[11px] text-faint"
+            style={{ left: -24, top: ROW_H * row + ROW_H / 2 - 7 }}
+          >
+            q{row}
+          </span>
+        ))}
 
-        {columns.map(({ step, x, w, i }) => {
-          if (step.barrier) {
+        {positioned.map(({ col, x, w }, i) => {
+          if (col.barrier) {
             return (
               <div
                 key={i}
@@ -124,42 +174,35 @@ function MiniCircuit({ steps }) {
           }
 
           const cx = x + w / 2
-          const isControlledP = step.q0?.kind === 'dot' && step.q1?.kind === 'P'
-          const isSwapPair = step.q0?.kind === 'swap' && step.q1?.kind === 'swap'
-
           return (
             <React.Fragment key={i}>
-              {(isControlledP || isSwapPair) && (
+              {col.connector && (
                 <div
                   className="pointer-events-none absolute"
                   style={{
                     left: cx,
-                    top: ROW_H / 2,
+                    top: ROW_H * Math.min(col.connector.from, col.connector.to) + ROW_H / 2,
                     width: 2,
-                    height: ROW_H,
-                    background: isControlledP ? COLORS.dot : COLORS.swap,
+                    height: Math.abs(col.connector.to - col.connector.from) * ROW_H,
+                    background: col.connector.color === 'swap' ? COLORS.swap : COLORS.dot,
                     transform: 'translateX(-50%)',
                   }}
                 />
               )}
-              {[0, 1].map((row) => {
-                const cell = row === 0 ? step.q0 : step.q1
-                if (!cell) return null
-                return (
-                  <div
-                    key={row}
-                    className="absolute flex items-center justify-center"
-                    style={{
-                      left: cx,
-                      top: ROW_H * row + ROW_H / 2,
-                      transform: 'translate(-50%, -50%)',
-                      zIndex: 2,
-                    }}
-                  >
-                    <Tile kind={cell.kind} label={cell.label} />
-                  </div>
-                )
-              })}
+              {col.ops.map((op, j) => (
+                <div
+                  key={j}
+                  className="absolute flex items-center justify-center"
+                  style={{
+                    left: cx,
+                    top: ROW_H * op.row + ROW_H / 2,
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 2,
+                  }}
+                >
+                  <Tile kind={op.kind} label={op.label} />
+                </div>
+              ))}
             </React.Fragment>
           )
         })}
@@ -168,9 +211,10 @@ function MiniCircuit({ steps }) {
   )
 }
 
-function QFTExpandModal({ type, onClose, onRemove }) {
+function QFTExpandModal({ type, targets, onClose, onRemove, onEdit }) {
   const isInverse = type === 'IQFT'
-  const steps = isInverse ? IQFT_STEPS : QFT_STEPS
+  const n = Math.max(2, targets?.length || 2)
+  const columns = buildColumns(n, isInverse)
 
   return (
     <AnimatePresence>
@@ -186,7 +230,7 @@ function QFTExpandModal({ type, onClose, onRemove }) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 8, scale: 0.98 }}
           transition={{ duration: 0.2 }}
-          className="w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-2xl"
+          className="w-full max-w-xl rounded-2xl border border-line bg-surface p-6 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-4 flex items-start justify-between">
@@ -195,7 +239,8 @@ function QFTExpandModal({ type, onClose, onRemove }) {
                 {isInverse ? 'IQFT' : 'QFT'} Gate Expand
               </h3>
               <p className="mt-1 text-[12px] text-muted">
-                The 2-qubit {isInverse ? 'inverse QFT' : 'QFT'} block, unrolled into elementary gates.
+                The {n}-qubit {isInverse ? 'inverse QFT' : 'QFT'} block
+                {targets ? ` (q${targets[0]}–q${targets[targets.length - 1]})` : ''}, unrolled into elementary gates.
               </p>
             </div>
             <button
@@ -207,24 +252,32 @@ function QFTExpandModal({ type, onClose, onRemove }) {
             </button>
           </div>
 
-          <div className="rounded-xl border border-line bg-panel px-6 py-8">
-            <MiniCircuit steps={steps} />
+          <div className="rounded-xl border border-line bg-panel px-6 py-8 pl-9">
+            <MiniCircuit n={n} columns={columns} />
           </div>
 
-          <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
+          <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
             <span className="font-mono text-[11px] text-faint">
-              {isInverse
-                ? 'swap(a,b) · h(a) · cp(−π/2, a, b) · h(b)'
-                : 'h(b) · cp(+π/2, a, b) · h(a) · swap(a,b)'}
+              H · controlled-phase · swap, on qubits 0..{n - 1}
             </span>
-            {onRemove && (
-              <button
-                onClick={onRemove}
-                className="rounded-md border border-line px-2.5 py-1 text-[11px] text-muted transition hover:border-[rgb(220_60_60/0.4)] hover:text-[rgb(200_50_50)]"
-              >
-                Remove gate
-              </button>
-            )}
+            <div className="flex shrink-0 gap-2">
+              {onEdit && (
+                <button
+                  onClick={onEdit}
+                  className="rounded-md border border-line px-2.5 py-1 text-[11px] text-muted transition hover:border-[rgb(var(--accent))] hover:text-ink"
+                >
+                  Edit qubits
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  onClick={onRemove}
+                  className="rounded-md border border-line px-2.5 py-1 text-[11px] text-muted transition hover:border-[rgb(220_60_60/0.4)] hover:text-[rgb(200_50_50)]"
+                >
+                  Remove gate
+                </button>
+              )}
+            </div>
           </div>
         </motion.div>
       </motion.div>

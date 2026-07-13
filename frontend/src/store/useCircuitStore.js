@@ -135,10 +135,11 @@ const buildCircuitState = (parsedCircuit) => {
       ...(g.control2 !== undefined && { controlQubit2: Number(g.control2) }),
       ...(g.swapQubit !== undefined && { swapQubit: Number(g.swapQubit) }),
       ...(g.swap_with !== undefined && { swapQubit: Number(g.swap_with) }),
-      ...(g.partnerQubit !== undefined && { partnerQubit: Number(g.partnerQubit) }),
-      ...(g.qftQubit !== undefined && { partnerQubit: Number(g.qftQubit) }),
-      ...(Array.isArray(g.targets) && g.targets.length > 1 && {
-        partnerQubit: Number(g.targets.find((t) => Number(t) !== qubit) ?? g.targets[1]),
+      ...(Array.isArray(g.targets) && g.targets.length >= 2 && {
+        targets: [...new Set(g.targets.map(Number))].sort((a, b) => a - b),
+      }),
+      ...(!Array.isArray(g.targets) && (g.partnerQubit !== undefined || g.qftQubit !== undefined) && {
+        targets: [qubit, Number(g.partnerQubit ?? g.qftQubit)].sort((a, b) => a - b),
       }),
       ...(g.theta !== undefined && { theta: Number(g.theta) }),
       ...(g.angle !== undefined && { theta: Number(g.angle) }),
@@ -164,15 +165,20 @@ const buildCircuitState = (parsedCircuit) => {
       return
     }
 
-    if (
-      (gate.type === 'QFT' || gate.type === 'IQFT') &&
-      (!Number.isInteger(gate.partnerQubit) || gate.partnerQubit === qubit || gate.partnerQubit < 0 || gate.partnerQubit >= parsedCircuit.qubits)
-    ) {
-      return
+    let anchorQubit = qubit
+    if (gate.type === 'QFT' || gate.type === 'IQFT') {
+      const targets = gate.targets
+      const contiguous = Array.isArray(targets) && targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
+      const inRange =
+        Array.isArray(targets) && targets.every((t) => Number.isInteger(t) && t >= 0 && t < parsedCircuit.qubits)
+      if (!Array.isArray(targets) || targets.length < 2 || !contiguous || !inRange || !targets.includes(qubit)) {
+        return
+      }
+      anchorQubit = targets[0]
     }
 
-    newCircuit[qubit][step] = gate
-    gates.push({ id: g.id || `loaded-${idx}`, qubit, step, ...gate })
+    newCircuit[anchorQubit][step] = gate
+    gates.push({ id: g.id || `loaded-${idx}`, qubit: anchorQubit, step, ...gate })
   })
 
   return {
@@ -274,6 +280,7 @@ export const useCircuitStore = create((set, get) => ({
       const newCircuit = state.circuit.map((row) => [...row])
 
       let normalizedGate = { ...gate }
+      let anchorQubit = qubit
       if (gate.type === 'CNOT') {
         const fallbackControl = qubit > 0 ? qubit - 1 : 1
         const controlQubit = Number.isInteger(gate.controlQubit)
@@ -316,22 +323,30 @@ export const useCircuitStore = create((set, get) => ({
         normalizedGate = { ...gate, swapQubit }
       } else if (gate.type === 'QFT' || gate.type === 'IQFT') {
         const fallbackPartner = qubit > 0 ? qubit - 1 : 1
-        const partnerQubit = Number.isInteger(gate.partnerQubit) ? gate.partnerQubit : fallbackPartner
+        const rawTargets =
+          Array.isArray(gate.targets) && gate.targets.length >= 2
+            ? gate.targets
+            : [qubit, Number.isInteger(gate.partnerQubit) ? gate.partnerQubit : fallbackPartner]
 
-        if (partnerQubit < 0 || partnerQubit >= state.qubits || partnerQubit === qubit) {
+        const targets = [...new Set(rawTargets.map(Number))].sort((a, b) => a - b)
+        const inRange = targets.every((t) => Number.isInteger(t) && t >= 0 && t < state.qubits)
+        const contiguous = targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
+
+        if (targets.length < 2 || !inRange || !contiguous || !targets.includes(qubit)) {
           return state
         }
 
-        normalizedGate = { ...gate, partnerQubit }
+        normalizedGate = { type: gate.type, targets }
+        anchorQubit = targets[0]
       }
 
-      newCircuit[qubit][step] = normalizedGate
+      newCircuit[anchorQubit][step] = normalizedGate
 
       // Add to gates array
-      const filteredExisting = state.gates.filter((g) => !(g.qubit === qubit && g.step === step))
+      const filteredExisting = state.gates.filter((g) => !(g.qubit === anchorQubit && g.step === step))
       const newGates = [
         ...filteredExisting,
-        { id: `${qubit}-${step}-${Date.now()}`, qubit, step, ...normalizedGate },
+        { id: `${anchorQubit}-${step}-${Date.now()}`, qubit: anchorQubit, step, ...normalizedGate },
       ]
 
       return {
@@ -413,7 +428,7 @@ export const useCircuitStore = create((set, get) => ({
         return state
       }
 
-      const fieldByRole = { control: 'controlQubit', control2: 'controlQubit2', swap: 'swapQubit', partner: 'partnerQubit' }
+      const fieldByRole = { control: 'controlQubit', control2: 'controlQubit2', swap: 'swapQubit' }
       const field = fieldByRole[role]
       if (!field) return state
 
@@ -428,6 +443,45 @@ export const useCircuitStore = create((set, get) => ({
       const newGates = state.gates.map((g) =>
         g.qubit === target && g.step === step ? { ...g, [field]: newWire } : g
       )
+
+      return {
+        circuit: newCircuit,
+        gates: newGates,
+        history: [
+          ...state.history.slice(0, state.historyIndex + 1),
+          { circuit: newCircuit, gates: newGates },
+        ],
+        historyIndex: state.historyIndex + 1,
+      }
+    })
+  },
+
+  // Replace a QFT/IQFT block's target qubits (Edit Gate modal). `anchorQubit`
+  // is wherever the gate currently lives; newTargets must be 2+ distinct,
+  // in-range, and contiguous — the gate is re-anchored at the lowest one.
+  setGateTargets: (anchorQubit, step, newTargets) => {
+    set((state) => {
+      const gate = state.circuit[anchorQubit]?.[step]
+      if (!gate || (gate.type !== 'QFT' && gate.type !== 'IQFT')) return state
+
+      const targets = [...new Set((newTargets || []).map(Number))].sort((a, b) => a - b)
+      const inRange = targets.every((t) => Number.isInteger(t) && t >= 0 && t < state.qubits)
+      const contiguous = targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
+
+      if (targets.length < 2 || !inRange || !contiguous) {
+        return state
+      }
+
+      const newAnchor = targets[0]
+      const updatedGate = { type: gate.type, targets }
+      const newCircuit = state.circuit.map((row) => [...row])
+      newCircuit[anchorQubit][step] = null
+      newCircuit[newAnchor][step] = updatedGate
+
+      const newGates = [
+        ...state.gates.filter((g) => !(g.qubit === anchorQubit && g.step === step)),
+        { id: `${newAnchor}-${step}-${Date.now()}`, qubit: newAnchor, step, ...updatedGate },
+      ]
 
       return {
         circuit: newCircuit,
