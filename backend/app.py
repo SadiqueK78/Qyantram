@@ -27,6 +27,13 @@ CORS(app, resources={
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# The line above sets the ROOT logger to INFO, which every library's logger
+# inherits unless told otherwise — that's what was printing Qiskit's
+# per-transpiler-pass timings and werkzeug's per-request lines on every
+# /simulate call. Silence those specifically; keep this app's own INFO logs.
+for noisy in ("werkzeug", "qiskit", "qiskit.transpiler", "qiskit.compiler", "stevedore"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
+
 def build_qft_block_gate(n: int, inverse: bool = False):
     """
     Build an n-qubit QFT (or inverse QFT) as a self-contained gate, using the
@@ -52,11 +59,20 @@ def build_qft_block_gate(n: int, inverse: bool = False):
     order looks superficially fine (uniform |QFT|00..0>| probabilities,
     self-inverse round-trips) but produces the wrong relative phases, which
     only shows up once you check the actual unitary, not just probabilities.
+
+    Within a single H's cascade, the controls are applied nearest-qubit-first
+    (descending), matching Qniverse's own qft2/qft3 circuits exactly — pixel-
+    verified against its reference screenshots. This particular ordering is
+    cosmetic (any two controlled-phase gates sharing a target are diagonal
+    and commute, so ascending vs. descending controls give the identical
+    unitary either way), but keeping it matched means the actual circuit
+    built here is the same one the Gate Expand modal describes, not just an
+    equivalent one.
     """
     sub = QuantumCircuit(n, name=('IQFT' if inverse else 'QFT'))
     for m in reversed(range(n)):
         sub.h(m)
-        for control in range(m):
+        for control in range(m - 1, -1, -1):
             angle = np.pi / (2 ** (m - control))
             sub.cp(angle, control, m)
     for i in range(n // 2):

@@ -175,6 +175,13 @@ function CircuitCell({ qubit, step, isHovered }) {
   const qftTargets = isQFTBlock ? gate.targets : []
   const qftSpanHeight = isQFTBlock ? GRID.CELL + (qftTargets.length - 1) * GRID.ROW_PITCH : 0
   const qftSpanTop = `calc(50% - ${GRID.CELL / 2}px)`
+  // The box's true vertical center coincides exactly with a row's own
+  // wire-crossing point whenever the qubit count is odd (e.g. n=3's middle
+  // row) — that collides with that row's own a/b/c label. Nudge the title
+  // half a row down into the gap to the next row instead; for even counts
+  // the center already falls between two rows, so no nudge is needed.
+  const qftMidRowIndex = isQFTBlock ? (qftTargets.length - 1) / 2 : 0
+  const qftCenterTop = Number.isInteger(qftMidRowIndex) ? `calc(50% + ${GRID.ROW_PITCH / 2}px)` : '50%'
 
   const removeThis = (e) => {
     e.stopPropagation()
@@ -303,7 +310,10 @@ function CircuitCell({ qubit, step, isHovered }) {
               {String.fromCharCode(97 + i)}
             </span>
           ))}
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] font-semibold leading-none">
+          <span
+            className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] font-semibold leading-none"
+            style={{ top: qftCenterTop }}
+          >
             {gate.type === 'IQFT' ? 'QFT†' : 'QFT'}
           </span>
         </div>

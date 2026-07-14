@@ -17,19 +17,81 @@ import { motion, AnimatePresence } from 'framer-motion'
 // self-inverse) — exactly what Gate.inverse() does to this same circuit on
 // the backend.
 // -----------------------------------------------------------------------------
-function buildOps(n) {
-  const rotation = []
+// -----------------------------------------------------------------------------
+// Column generators for the n-qubit QFT/IQFT decomposition, matching Qniverse's
+// actual reference circuits exactly — verified pixel-for-pixel against its own
+// screenshots (gate positions, control/target roles, and barrier placement)
+// for n=2 and n=3, and numerically confirmed to compute the correct unitary
+// for n up to 5. The two directions are NOT simple mirror images of each
+// other (naively reversing the forward op list gives a different, though
+// equally valid, ordering that doesn't match what Qniverse actually draws) —
+// each is built to match its own reference independently.
+//
+// Forward: for m = n-1 down to 0: H(m), then controlled-phase from every
+// lower qubit into m (nearest control first) — a barrier after every group,
+// finishing with the swaps.
+//
+// Inverse: swaps first, then for each "boundary" qubit m = 0..n-2: H(m),
+// then controlled-phase (negated angle) from every lower qubit into m+1
+// (nearest control first) — a barrier after every group — finishing with a
+// lone H(n-1).
+// -----------------------------------------------------------------------------
+function buildForwardColumns(n) {
+  const cols = []
   for (let m = n - 1; m >= 0; m--) {
-    rotation.push({ kind: 'H', row: m })
-    for (let control = 0; control < m; control++) {
-      rotation.push({ kind: 'CP', control, target: m, theta: Math.PI / 2 ** (m - control) })
+    cols.push({ ops: [{ row: m, kind: 'H' }] })
+    for (let control = m - 1; control >= 0; control--) {
+      const theta = Math.PI / 2 ** (m - control)
+      cols.push({
+        ops: [
+          { row: control, kind: 'dot' },
+          { row: m, kind: 'P', label: angleLabel(theta) },
+        ],
+        connector: { from: control, to: m, color: 'dot' },
+      })
     }
+    cols.push({ barrier: true })
   }
-  const swaps = []
   for (let i = 0; i < Math.floor(n / 2); i++) {
-    swaps.push({ kind: 'SWAP', a: i, b: n - 1 - i })
+    cols.push({
+      ops: [
+        { row: i, kind: 'swap' },
+        { row: n - 1 - i, kind: 'swap' },
+      ],
+      connector: { from: i, to: n - 1 - i, color: 'swap' },
+    })
   }
-  return { rotation, swaps }
+  return cols
+}
+
+function buildInverseColumns(n) {
+  const cols = []
+  for (let i = 0; i < Math.floor(n / 2); i++) {
+    cols.push({
+      ops: [
+        { row: i, kind: 'swap' },
+        { row: n - 1 - i, kind: 'swap' },
+      ],
+      connector: { from: i, to: n - 1 - i, color: 'swap' },
+    })
+  }
+  cols.push({ barrier: true })
+  for (let target = 1; target <= n - 1; target++) {
+    cols.push({ ops: [{ row: target - 1, kind: 'H' }] })
+    for (let control = target - 1; control >= 0; control--) {
+      const theta = -Math.PI / 2 ** (target - control)
+      cols.push({
+        ops: [
+          { row: control, kind: 'dot' },
+          { row: target, kind: 'P', label: angleLabel(theta) },
+        ],
+        connector: { from: control, to: target, color: 'dot' },
+      })
+    }
+    cols.push({ barrier: true })
+  }
+  cols.push({ ops: [{ row: n - 1, kind: 'H' }] })
+  return cols
 }
 
 function angleLabel(theta) {
@@ -39,39 +101,7 @@ function angleLabel(theta) {
 }
 
 function buildColumns(n, inverse) {
-  const { rotation, swaps } = buildOps(n)
-  const opsInOrder = inverse
-    ? [
-        ...swaps.slice().reverse(),
-        { barrier: true },
-        ...rotation
-          .slice()
-          .reverse()
-          .map((op) => (op.kind === 'CP' ? { ...op, theta: -op.theta } : op)),
-      ]
-    : [...rotation, { barrier: true }, ...swaps]
-
-  return opsInOrder.map((op) => {
-    if (op.barrier) return { barrier: true }
-    if (op.kind === 'H') return { ops: [{ row: op.row, kind: 'H' }] }
-    if (op.kind === 'CP') {
-      return {
-        ops: [
-          { row: op.control, kind: 'dot' },
-          { row: op.target, kind: 'P', label: angleLabel(op.theta) },
-        ],
-        connector: { from: op.control, to: op.target, color: 'dot' },
-      }
-    }
-    // SWAP
-    return {
-      ops: [
-        { row: op.a, kind: 'swap' },
-        { row: op.b, kind: 'swap' },
-      ],
-      connector: { from: op.a, to: op.b, color: 'swap' },
-    }
-  })
+  return inverse ? buildInverseColumns(n) : buildForwardColumns(n)
 }
 
 const COL_W = 56
