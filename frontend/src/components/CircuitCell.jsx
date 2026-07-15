@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDrag, useDrop } from 'react-dnd'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAI } from '../hooks/useAI'
@@ -6,6 +6,9 @@ import { GATES, GRID, gateSymbol } from '../config/constants'
 import { formatAngle } from '../utils/formatAngle'
 import QFTExpandModal from './QFTExpandModal'
 import QFTEditGateModal from './QFTEditGateModal'
+import ControlGateEditModal from './ControlGateEditModal'
+import GateExpandModal from './GateExpandModal'
+import GateToolbar from './GateToolbar'
 
 const ANGLE_GATES = ['RX', 'RY', 'RZ', 'P']
 
@@ -46,8 +49,19 @@ function ControlNode({ target, step, role, offsetRows, kind }) {
 }
 
 function CircuitCell({ qubit, step, isHovered }) {
-  const { circuit, qubits, addGate, removeGate, setGateControl, setGateTheta, setGateTargets, highlightedStep, beginnerMode } =
-    useCircuitStore()
+  const {
+    circuit,
+    qubits,
+    addGate,
+    removeGate,
+    duplicateGate,
+    setGateControl,
+    setGateTheta,
+    setGateTargets,
+    setControlGateConfig,
+    highlightedStep,
+    beginnerMode,
+  } = useCircuitStore()
   const { handleExplainGate } = useAI()
   const gate = circuit[qubit]?.[step]
   const meta = gate ? GATES[gate.type] : null
@@ -57,6 +71,26 @@ function CircuitCell({ qubit, step, isHovered }) {
   const [angleDraft, setAngleDraft] = useState('1.5708')
   const [qftExpandOpen, setQftExpandOpen] = useState(false)
   const [qftEditOpen, setQftEditOpen] = useState(false)
+  const [controlEditOpen, setControlEditOpen] = useState(false)
+  const [gateExpandOpen, setGateExpandOpen] = useState(false)
+  const [toolbarOpen, setToolbarOpen] = useState(false)
+
+  const cellRef = useRef(null)
+  const tileRef = useRef(null)
+
+  // Close the toolbar on any click outside this cell.
+  useEffect(() => {
+    if (!toolbarOpen) return undefined
+    const handler = (e) => {
+      const insideCell = cellRef.current && cellRef.current.contains(e.target)
+      const insideToolbar = e.target.closest && e.target.closest('[data-gate-toolbar]')
+      if (!insideCell && !insideToolbar) {
+        setToolbarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [toolbarOpen])
 
   // Default partner wire for a freshly dropped multi-qubit gate (no prompts).
   const defaultPartner = qubit === 0 ? 1 : qubit - 1
@@ -128,6 +162,49 @@ function CircuitCell({ qubit, step, isHovered }) {
     setAnglePopover(false)
   }
 
+  const toggleToolbar = (e) => {
+    e.stopPropagation()
+    setToolbarOpen((v) => !v)
+  }
+
+  const handleToolbarEdit = () => {
+    setToolbarOpen(false)
+    if (!gate) return
+    if (ANGLE_GATES.includes(gate.type)) {
+      setAngleDraft(String(gate.theta ?? 1.5708))
+      setAnglePopover(true)
+    } else if (gate.type === 'QFT' || gate.type === 'IQFT') {
+      setQftEditOpen(true)
+    } else if (gate.type === 'CNOT' || gate.type === 'CCNOT') {
+      setControlEditOpen(true)
+    }
+  }
+
+  const handleToolbarExpand = () => {
+    setToolbarOpen(false)
+    if (!gate) return
+    if (gate.type === 'QFT' || gate.type === 'IQFT') {
+      setQftExpandOpen(true)
+    } else {
+      setGateExpandOpen(true)
+    }
+  }
+
+  const handleToolbarDuplicate = () => {
+    setToolbarOpen(false)
+    duplicateGate(qubit, step)
+  }
+
+  const handleToolbarDelete = () => {
+    setToolbarOpen(false)
+    removeGate(qubit, step)
+  }
+
+  const handleToolbarInfo = () => {
+    setToolbarOpen(false)
+    if (gate) handleExplainGate({ type: gate.type, qubit, step, ...gate })
+  }
+
   // --- connectors for multi-qubit gates (rendered from the target cell) ---
   const connectors = []
   if (gate) {
@@ -183,22 +260,20 @@ function CircuitCell({ qubit, step, isHovered }) {
   const qftMidRowIndex = isQFTBlock ? (qftTargets.length - 1) / 2 : 0
   const qftCenterTop = Number.isInteger(qftMidRowIndex) ? `calc(50% + ${GRID.ROW_PITCH / 2}px)` : '50%'
 
-  const removeThis = (e) => {
-    e.stopPropagation()
-    removeGate(qubit, step)
-  }
-
   const tileTitle = isMeasure
-    ? 'Measure — collapses this qubit onto its classical bit (click to remove)'
+    ? 'Measure — collapses this qubit onto its classical bit (click for options)'
     : isBarrier
-    ? 'Barrier — separates compilation stages, no operation (click to remove)'
+    ? 'Barrier — separates compilation stages, no operation (click for options)'
     : gate?.theta !== undefined
-    ? `${gate.type} (θ=${formatAngle(Number(gate.theta))}) — click to remove, double-click to edit`
-    : `${gate?.type} — click to remove`
+    ? `${gate.type} (θ=${formatAngle(Number(gate.theta))}) — click for options`
+    : `${gate?.type} — click for options`
 
   return (
     <div
-      ref={drop}
+      ref={(el) => {
+        drop(el)
+        cellRef.current = el
+      }}
       onContextMenu={handleContextMenu}
       className={`circuit-cell ${isOver && canDrop ? 'valid-drop' : ''} ${isOver && !canDrop ? 'invalid-drop' : ''} ${isHighlighted ? 'step-highlighted' : ''}`}
       style={{ width: GRID.COL_WIDTH, height: GRID.ROW_PITCH, color: meta ? 'var(--g-fg)' : 'inherit' }}
@@ -209,7 +284,8 @@ function CircuitCell({ qubit, step, isHovered }) {
       {/* IBM-style barrier: full-height dashed vertical band, no colored box */}
       {isBarrier && (
         <div
-          onClick={removeThis}
+          ref={tileRef}
+          onClick={toggleToolbar}
           title={tileTitle}
           className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 cursor-pointer items-stretch"
           style={{ zIndex: 5 }}
@@ -232,7 +308,8 @@ function CircuitCell({ qubit, step, isHovered }) {
         return (
           <>
             <div
-              onClick={removeThis}
+              ref={tileRef}
+              onClick={toggleToolbar}
               title={tileTitle}
               className="relative flex cursor-pointer items-center justify-center"
               style={{ width: GRID.COL_WIDTH, height: GRID.CELL, zIndex: 5 }}
@@ -286,15 +363,9 @@ function CircuitCell({ qubit, step, isHovered }) {
           "qft2 a, b" block, generalized to any contiguous qubit range. */}
       {isQFTBlock && (
         <div
-          onClick={(e) => {
-            e.stopPropagation()
-            setQftExpandOpen(true)
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
-            setQftEditOpen(true)
-          }}
-          title={`${gate.type === 'IQFT' ? 'Inverse QFT' : 'QFT'} block on q${qftTargets[0]}–q${qftTargets[qftTargets.length - 1]} — click to expand, double-click to edit qubits`}
+          ref={tileRef}
+          onClick={toggleToolbar}
+          title={`${gate.type === 'IQFT' ? 'Inverse QFT' : 'QFT'} block on q${qftTargets[0]}–q${qftTargets[qftTargets.length - 1]} — click for options`}
           className={`gate-tile ${tileTone} absolute left-1/2 -translate-x-1/2 cursor-pointer`}
           style={{ width: GRID.CELL, top: qftSpanTop, height: qftSpanHeight, zIndex: 5 }}
         >
@@ -350,20 +421,63 @@ function CircuitCell({ qubit, step, isHovered }) {
 
       {gate && !isBarrier && !isMeasure && !isQFTBlock && (
         <div
-          onClick={removeThis}
-          onDoubleClick={(e) => {
-            if (ANGLE_GATES.includes(gate.type)) {
-              e.stopPropagation()
-              setAngleDraft(String(gate.theta ?? 1.5708))
-              setAnglePopover(true)
-            }
-          }}
+          ref={tileRef}
+          onClick={toggleToolbar}
           title={tileTitle}
           className={`gate-tile ${tileTone} cursor-pointer`}
           style={{ width: GRID.CELL, height: GRID.CELL, fontSize: gate.type.length > 2 ? 10 : 13, zIndex: 5 }}
         >
           {showSwapX ? '×' : gateSymbol(gate.type)}
         </div>
+      )}
+
+      {/* Gate toolbar (edit/duplicate/delete/expand/info) — shown for any
+          placed gate on click, replacing the old click-to-delete behavior. */}
+      {gate && toolbarOpen && (
+        <GateToolbar
+          anchorEl={tileRef.current}
+          editable={!!meta?.editable}
+          onEdit={handleToolbarEdit}
+          onDuplicate={handleToolbarDuplicate}
+          onDelete={handleToolbarDelete}
+          onExpand={handleToolbarExpand}
+          onInfo={handleToolbarInfo}
+        />
+      )}
+
+      {gate && (gate.type === 'CNOT' || gate.type === 'CCNOT') && controlEditOpen && (
+        <ControlGateEditModal
+          type={gate.type}
+          qubits={qubits}
+          currentTarget={qubit}
+          currentControls={gate.type === 'CCNOT' ? [gate.controlQubit, gate.controlQubit2] : [gate.controlQubit]}
+          onClose={() => setControlEditOpen(false)}
+          onSave={({ target, controls }) => {
+            setControlGateConfig(qubit, step, { target, controls })
+            setControlEditOpen(false)
+          }}
+        />
+      )}
+
+      {gate && !isQFTBlock && gateExpandOpen && (
+        <GateExpandModal
+          type={gate.type}
+          gate={gate}
+          anchorQubit={qubit}
+          onClose={() => setGateExpandOpen(false)}
+          onEdit={
+            meta?.editable
+              ? () => {
+                  setGateExpandOpen(false)
+                  handleToolbarEdit()
+                }
+              : undefined
+          }
+          onRemove={() => {
+            setGateExpandOpen(false)
+            removeGate(qubit, step)
+          }}
+        />
       )}
 
       {/* angle popover */}

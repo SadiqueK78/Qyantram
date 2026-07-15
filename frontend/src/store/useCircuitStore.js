@@ -495,6 +495,108 @@ export const useCircuitStore = create((set, get) => ({
     })
   },
 
+  // Replace a CNOT/CCNOT's target qubit and control qubit(s) (Edit Gate
+  // modal). `anchorQubit` is wherever the gate currently lives (its target
+  // row); the gate is re-anchored at the new target.
+  setControlGateConfig: (anchorQubit, step, { target, controls }) => {
+    set((state) => {
+      const gate = state.circuit[anchorQubit]?.[step]
+      if (!gate || (gate.type !== 'CNOT' && gate.type !== 'CCNOT')) return state
+
+      const needed = gate.type === 'CCNOT' ? 2 : 1
+      const ctrls = [...new Set((controls || []).map(Number))]
+      const t = Number(target)
+
+      const inRange = Number.isInteger(t) && t >= 0 && t < state.qubits
+      const ctrlsValid =
+        ctrls.length === needed && ctrls.every((c) => Number.isInteger(c) && c >= 0 && c < state.qubits && c !== t)
+
+      if (!inRange || !ctrlsValid) return state
+
+      const updatedGate =
+        gate.type === 'CCNOT'
+          ? { type: 'CCNOT', controlQubit: ctrls[0], controlQubit2: ctrls[1] }
+          : { type: 'CNOT', controlQubit: ctrls[0] }
+
+      const newCircuit = state.circuit.map((row) => [...row])
+      newCircuit[anchorQubit][step] = null
+      newCircuit[t][step] = updatedGate
+
+      const newGates = [
+        ...state.gates.filter((g) => !(g.qubit === anchorQubit && g.step === step)),
+        { id: `${t}-${step}-${Date.now()}`, qubit: t, step, ...updatedGate },
+      ]
+
+      return {
+        circuit: newCircuit,
+        gates: newGates,
+        history: [
+          ...state.history.slice(0, state.historyIndex + 1),
+          { circuit: newCircuit, gates: newGates },
+        ],
+        historyIndex: state.historyIndex + 1,
+      }
+    })
+  },
+
+  // Duplicate a placed gate (toolbar copy action) into the next step where
+  // every wire it touches is free — keeps the same role fields (controls,
+  // swap partner, QFT targets, theta, ...) exactly as-is, just moved later
+  // in time. No-ops if no free slot is found within the visible grid.
+  duplicateGate: (qubit, step) => {
+    set((state) => {
+      const gate = state.circuit[qubit]?.[step]
+      if (!gate) return state
+
+      const rows =
+        gate.type === 'CCNOT'
+          ? [qubit, gate.controlQubit, gate.controlQubit2]
+          : gate.type === 'CNOT'
+          ? [qubit, gate.controlQubit]
+          : gate.type === 'SWAP'
+          ? [qubit, gate.swapQubit]
+          : gate.type === 'QFT' || gate.type === 'IQFT'
+          ? gate.targets
+          : [qubit]
+
+      if (rows.some((r) => !Number.isInteger(r) || r < 0 || r >= state.qubits)) return state
+
+      const maxStep = state.steps + rows.length + 5
+      let targetStep = null
+      for (let s = step + 1; s <= maxStep; s++) {
+        if (rows.every((r) => !state.circuit[r][s])) {
+          targetStep = s
+          break
+        }
+      }
+      if (targetStep === null) return state
+
+      const newCircuit = state.circuit.map((row) => {
+        const copy = [...row]
+        while (copy.length <= targetStep) copy.push(null)
+        return copy
+      })
+      const anchorRow = gate.type === 'QFT' || gate.type === 'IQFT' ? Math.min(...rows) : qubit
+      newCircuit[anchorRow][targetStep] = { ...gate }
+
+      const newGates = [
+        ...state.gates,
+        { id: `${anchorRow}-${targetStep}-${Date.now()}`, qubit: anchorRow, step: targetStep, ...gate },
+      ]
+
+      return {
+        circuit: newCircuit,
+        steps: Math.max(state.steps, targetStep + 1),
+        gates: newGates,
+        history: [
+          ...state.history.slice(0, state.historyIndex + 1),
+          { circuit: newCircuit, gates: newGates },
+        ],
+        historyIndex: state.historyIndex + 1,
+      }
+    })
+  },
+
   // Update an angle-gate's theta in place (inline popover UX).
   setGateTheta: (target, step, theta) => {
     set((state) => {
