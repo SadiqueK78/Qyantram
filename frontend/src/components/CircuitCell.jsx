@@ -12,7 +12,7 @@ import GateToolbar from './GateToolbar'
 
 const ANGLE_GATES = ['RX', 'RY', 'RZ', 'P']
 
-// A draggable control/target node that sits on another wire and can be dragged
+// A draggable control/target node that sits o another wire and can be dragged
 // to reassign which qubit it connects to (IBM-Composer-style).
 function ControlNode({ target, step, role, offsetRows, kind }) {
   const [{ isDragging }, drag] = useDrag(
