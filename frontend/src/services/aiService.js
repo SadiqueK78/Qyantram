@@ -70,6 +70,7 @@ export function buildUserPrompt({
       if (g.controlQubit !== undefined) desc += ` (control: q${g.controlQubit})`
       if (g.controlQubit2 !== undefined) desc += ` (control2: q${g.controlQubit2})`
       if (g.swapQubit !== undefined) desc += ` (swap with: q${g.swapQubit})`
+      if (Array.isArray(g.targets)) desc += ` (spans: ${g.targets.map((t) => `q${t}`).join(', ')})`
       if (g.theta !== undefined) desc += ` (θ=${Number(g.theta).toFixed(4)} rad)`
       return desc
     })

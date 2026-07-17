@@ -42,6 +42,15 @@ function gcd(a, b) {
   return a || 1
 }
 
+// Bell block decompositions — same as the backend's build_bell_block_gate:
+// X gates pick the basis pair, then H on the top wire and CNOT(top→bottom).
+const BELL_BLOCKS = {
+  BELL_PHI_PLUS:  { ket: 'Phi+ = (|00>+|11>)/sqrt(2)', xWires: [] },
+  BELL_PHI_MINUS: { ket: 'Phi- = (|00>-|11>)/sqrt(2)', xWires: [0] },
+  BELL_PSI_PLUS:  { ket: 'Psi+ = (|01>+|10>)/sqrt(2)', xWires: [1] },
+  BELL_PSI_MINUS: { ket: 'Psi- = (|01>-|10>)/sqrt(2)', xWires: [0, 1] },
+}
+
 // Flatten the [qubit][step] grid into a step-ordered instruction list —
 // same traversal order the circuit was actually authored in.
 function stepOrderedGates(circuit, steps) {
@@ -101,6 +110,18 @@ export function toOpenQASM(qubits, circuit, steps) {
         const inverse = gate.type === 'IQFT'
         lines.push(`// ${inverse ? 'IQFT' : 'QFT'} block on q[${targets[0]}..${targets[n - 1]}]`)
         for (const line of qftBlockQASM(targets, inverse)) lines.push(line)
+        break
+      }
+      case 'BELL_PHI_PLUS':
+      case 'BELL_PHI_MINUS':
+      case 'BELL_PSI_PLUS':
+      case 'BELL_PSI_MINUS': {
+        const targets = gate.targets || [qubit, qubit + 1]
+        const spec = BELL_BLOCKS[gate.type]
+        lines.push(`// Bell block ${spec.ket} on q[${targets[0]}],q[${targets[1]}]`)
+        for (const w of spec.xWires) lines.push(`x q[${targets[w]}];`)
+        lines.push(`h q[${targets[0]}];`)
+        lines.push(`cx q[${targets[0]}],q[${targets[1]}];`)
         break
       }
       default: lines.push(`// unsupported gate: ${gate.type}`)
@@ -198,6 +219,18 @@ export function toQiskit(qubits, circuit, steps, shots) {
         const inverse = gate.type === 'IQFT'
         lines.push(`# ${inverse ? 'IQFT' : 'QFT'} block on q[${targets[0]}..${targets[n - 1]}]`)
         for (const line of qftBlockPython(targets, inverse)) lines.push(line)
+        break
+      }
+      case 'BELL_PHI_PLUS':
+      case 'BELL_PHI_MINUS':
+      case 'BELL_PSI_PLUS':
+      case 'BELL_PSI_MINUS': {
+        const targets = gate.targets || [qubit, qubit + 1]
+        const spec = BELL_BLOCKS[gate.type]
+        lines.push(`# Bell block ${spec.ket} on q[${targets[0]}],q[${targets[1]}]`)
+        for (const w of spec.xWires) lines.push(`qc.x(q[${targets[w]}])`)
+        lines.push(`qc.h(q[${targets[0]}])`)
+        lines.push(`qc.cx(q[${targets[0]}], q[${targets[1]}])`)
         break
       }
       default: lines.push(`# unsupported gate: ${gate.type}`)

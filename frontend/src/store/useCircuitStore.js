@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { DEFAULT_SHOTS } from '../config/constants'
+import { DEFAULT_SHOTS, isBlockType, blockExactTargets } from '../config/constants'
 
 // Initialize empty circuit
 const createEmptyCircuit = (qubits, steps) => {
@@ -49,6 +49,10 @@ const canonicalGateType = (rawType) => {
     SWAP: 'SWAP',
     QFT: 'QFT',
     IQFT: 'IQFT',
+    BELL_PHI_PLUS: 'BELL_PHI_PLUS',
+    BELL_PHI_MINUS: 'BELL_PHI_MINUS',
+    BELL_PSI_PLUS: 'BELL_PSI_PLUS',
+    BELL_PSI_MINUS: 'BELL_PSI_MINUS',
     MEASURE: 'Measure',
     RESET: 'Reset',
     BARRIER: 'Barrier',
@@ -166,12 +170,14 @@ const buildCircuitState = (parsedCircuit) => {
     }
 
     let anchorQubit = qubit
-    if (gate.type === 'QFT' || gate.type === 'IQFT') {
+    if (isBlockType(gate.type)) {
       const targets = gate.targets
+      const exact = blockExactTargets(gate.type)
       const contiguous = Array.isArray(targets) && targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
       const inRange =
         Array.isArray(targets) && targets.every((t) => Number.isInteger(t) && t >= 0 && t < parsedCircuit.qubits)
-      if (!Array.isArray(targets) || targets.length < 2 || !contiguous || !inRange || !targets.includes(qubit)) {
+      const rightCount = Array.isArray(targets) && (exact ? targets.length === exact : targets.length >= 2)
+      if (!Array.isArray(targets) || !rightCount || !contiguous || !inRange || !targets.includes(qubit)) {
         return
       }
       anchorQubit = targets[0]
@@ -273,7 +279,7 @@ export const useCircuitStore = create((set, get) => ({
         return state
       }
 
-      if ((gate.type === 'QFT' || gate.type === 'IQFT') && state.qubits < 2) {
+      if (isBlockType(gate.type) && state.qubits < 2) {
         return state
       }
 
@@ -321,7 +327,7 @@ export const useCircuitStore = create((set, get) => ({
         }
 
         normalizedGate = { ...gate, swapQubit }
-      } else if (gate.type === 'QFT' || gate.type === 'IQFT') {
+      } else if (isBlockType(gate.type)) {
         const fallbackPartner = qubit > 0 ? qubit - 1 : 1
         const rawTargets =
           Array.isArray(gate.targets) && gate.targets.length >= 2
@@ -329,10 +335,12 @@ export const useCircuitStore = create((set, get) => ({
             : [qubit, Number.isInteger(gate.partnerQubit) ? gate.partnerQubit : fallbackPartner]
 
         const targets = [...new Set(rawTargets.map(Number))].sort((a, b) => a - b)
+        const exact = blockExactTargets(gate.type)
         const inRange = targets.every((t) => Number.isInteger(t) && t >= 0 && t < state.qubits)
         const contiguous = targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
+        const rightCount = exact ? targets.length === exact : targets.length >= 2
 
-        if (targets.length < 2 || !inRange || !contiguous || !targets.includes(qubit)) {
+        if (!rightCount || !inRange || !contiguous || !targets.includes(qubit)) {
           return state
         }
 
@@ -456,19 +464,22 @@ export const useCircuitStore = create((set, get) => ({
     })
   },
 
-  // Replace a QFT/IQFT block's target qubits (Edit Gate modal). `anchorQubit`
-  // is wherever the gate currently lives; newTargets must be 2+ distinct,
-  // in-range, and contiguous — the gate is re-anchored at the lowest one.
+  // Replace a block gate's (QFT/IQFT/Bell) target qubits (Edit Gate modal).
+  // `anchorQubit` is wherever the gate currently lives; newTargets must be
+  // distinct, in-range, contiguous, and match the block's required count
+  // (exactly 2 for Bell, 2+ for QFT) — the gate is re-anchored at the lowest.
   setGateTargets: (anchorQubit, step, newTargets) => {
     set((state) => {
       const gate = state.circuit[anchorQubit]?.[step]
-      if (!gate || (gate.type !== 'QFT' && gate.type !== 'IQFT')) return state
+      if (!gate || !isBlockType(gate.type)) return state
 
       const targets = [...new Set((newTargets || []).map(Number))].sort((a, b) => a - b)
+      const exact = blockExactTargets(gate.type)
       const inRange = targets.every((t) => Number.isInteger(t) && t >= 0 && t < state.qubits)
       const contiguous = targets.every((t, i) => i === 0 || t === targets[i - 1] + 1)
+      const rightCount = exact ? targets.length === exact : targets.length >= 2
 
-      if (targets.length < 2 || !inRange || !contiguous) {
+      if (!rightCount || !inRange || !contiguous) {
         return state
       }
 
@@ -555,7 +566,7 @@ export const useCircuitStore = create((set, get) => ({
           ? [qubit, gate.controlQubit]
           : gate.type === 'SWAP'
           ? [qubit, gate.swapQubit]
-          : gate.type === 'QFT' || gate.type === 'IQFT'
+          : isBlockType(gate.type)
           ? gate.targets
           : [qubit]
 
@@ -576,7 +587,7 @@ export const useCircuitStore = create((set, get) => ({
         while (copy.length <= targetStep) copy.push(null)
         return copy
       })
-      const anchorRow = gate.type === 'QFT' || gate.type === 'IQFT' ? Math.min(...rows) : qubit
+      const anchorRow = isBlockType(gate.type) ? Math.min(...rows) : qubit
       newCircuit[anchorRow][targetStep] = { ...gate }
 
       const newGates = [

@@ -24,6 +24,10 @@ export const GATES = {
   SWAP:    { type: 'SWAP',    label: 'Swap',      symbol: '×',    tone: 'fuchsia', qubits: 2, angle: false, editable: false, desc: 'Swap two qubits' },
   QFT:     { type: 'QFT',     label: 'QFT',       symbol: 'QFT',  tone: 'violet',  qubits: 2, angle: false, editable: true,  block: true, desc: 'Quantum Fourier Transform block (H, controlled-phase, swap) on the two qubits it spans' },
   IQFT:    { type: 'IQFT',    label: 'Inverse QFT', symbol: 'QFT†', tone: 'violet', qubits: 2, angle: false, editable: true, block: true, desc: 'Inverse Quantum Fourier Transform block on the two qubits it spans' },
+  BELL_PHI_PLUS:  { type: 'BELL_PHI_PLUS',  label: 'Bell |Φ+⟩', symbol: 'Φ+', tone: 'teal', qubits: 2, angle: false, editable: true, block: true, desc: 'Bell state (|00⟩+|11⟩)/√2 — H then CNOT on the two qubits it spans' },
+  BELL_PHI_MINUS: { type: 'BELL_PHI_MINUS', label: 'Bell |Φ−⟩', symbol: 'Φ−', tone: 'teal', qubits: 2, angle: false, editable: true, block: true, desc: 'Bell state (|00⟩−|11⟩)/√2 — X, H then CNOT on the two qubits it spans' },
+  BELL_PSI_PLUS:  { type: 'BELL_PSI_PLUS',  label: 'Bell |Ψ+⟩', symbol: 'Ψ+', tone: 'teal', qubits: 2, angle: false, editable: true, block: true, desc: 'Bell state (|01⟩+|10⟩)/√2 — X on the lower qubit, H then CNOT' },
+  BELL_PSI_MINUS: { type: 'BELL_PSI_MINUS', label: 'Bell |Ψ−⟩', symbol: 'Ψ−', tone: 'teal', qubits: 2, angle: false, editable: true, block: true, desc: 'Singlet Bell state (|01⟩−|10⟩)/√2 — X on both qubits, H then CNOT' },
   Measure: { type: 'Measure', label: 'Measure',   symbol: 'M',    tone: 'slate',   qubits: 1, angle: false, editable: false, desc: 'Measurement (collapses qubit to classical bit)' },
   Reset:   { type: 'Reset',   label: 'Reset',     symbol: '|0⟩',  tone: 'slate',   qubits: 1, angle: false, editable: false, desc: 'Reset to |0⟩' },
   Barrier: { type: 'Barrier', label: 'Barrier',   symbol: '⏸',    tone: 'slate',   qubits: 1, angle: false, editable: false, desc: 'Barrier (compiler separator, no operation)' },
@@ -36,8 +40,19 @@ export const GATE_GROUPS = [
   { title: 'Rotations',    gates: ['RX', 'RY', 'RZ'] },
   { title: 'Multi-Qubit',  gates: ['CNOT', 'CCNOT', 'SWAP'] },
   { title: 'Transforms',   gates: ['QFT', 'IQFT'] },
+  { title: 'Bell States',  gates: ['BELL_PHI_PLUS', 'BELL_PHI_MINUS', 'BELL_PSI_PLUS', 'BELL_PSI_MINUS'] },
   { title: 'Operations',   gates: ['Measure', 'Reset', 'Barrier'] },
 ]
+
+// Multi-wire "block" gates that live at their topmost target row and render
+// as one box spanning every wire in `targets` (QFT-style plumbing).
+export const BELL_GATE_TYPES = ['BELL_PHI_PLUS', 'BELL_PHI_MINUS', 'BELL_PSI_PLUS', 'BELL_PSI_MINUS']
+export const BLOCK_GATE_TYPES = ['QFT', 'IQFT', ...BELL_GATE_TYPES]
+export const isBellType = (type) => BELL_GATE_TYPES.includes(type)
+export const isBlockType = (type) => BLOCK_GATE_TYPES.includes(type)
+// Bell blocks span exactly 2 wires; QFT/IQFT span 2+. Returns the required
+// target count, or null when any count >= 2 is allowed.
+export const blockExactTargets = (type) => (isBellType(type) ? 2 : null)
 
 // Flat, ordered list of every gate (for the full sidebar rail).
 export const ALL_GATE_TYPES = GATE_GROUPS.flatMap((g) => g.gates)

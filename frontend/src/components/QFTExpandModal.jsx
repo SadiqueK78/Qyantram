@@ -100,6 +100,40 @@ function angleLabel(theta) {
   return k === 0 ? `${sign}π` : `${sign}π/${2 ** k}`
 }
 
+// -----------------------------------------------------------------------------
+// Bell-state block decompositions — matching build_bell_block_gate() in the
+// backend exactly. All four are the standard preparation: optional X gates to
+// pick the basis pair, then H on wire a and CNOT(a→b) to entangle.
+//   |Φ+⟩ = (|00⟩+|11⟩)/√2 :          H(a), CX(a,b)
+//   |Φ−⟩ = (|00⟩−|11⟩)/√2 : X(a),   H(a), CX(a,b)
+//   |Ψ+⟩ = (|01⟩+|10⟩)/√2 : X(b),   H(a), CX(a,b)
+//   |Ψ−⟩ = (|01⟩−|10⟩)/√2 : X(a+b), H(a), CX(a,b)
+// -----------------------------------------------------------------------------
+const BELL_SPECS = {
+  BELL_PHI_PLUS:  { title: 'Bell |Φ+⟩', ket: '(|00⟩ + |11⟩)/√2', xRows: [] },
+  BELL_PHI_MINUS: { title: 'Bell |Φ−⟩', ket: '(|00⟩ − |11⟩)/√2', xRows: [0] },
+  BELL_PSI_PLUS:  { title: 'Bell |Ψ+⟩', ket: '(|01⟩ + |10⟩)/√2', xRows: [1] },
+  BELL_PSI_MINUS: { title: 'Bell |Ψ−⟩', ket: '(|01⟩ − |10⟩)/√2', xRows: [0, 1] },
+}
+
+function buildBellColumns(type) {
+  const spec = BELL_SPECS[type]
+  const cols = []
+  if (spec.xRows.length) {
+    cols.push({ ops: spec.xRows.map((row) => ({ row, kind: 'X' })) })
+    cols.push({ barrier: true })
+  }
+  cols.push({ ops: [{ row: 0, kind: 'H' }] })
+  cols.push({
+    ops: [
+      { row: 0, kind: 'dot' },
+      { row: 1, kind: 'target' },
+    ],
+    connector: { from: 0, to: 1, color: 'dot' },
+  })
+  return cols
+}
+
 function buildColumns(n, inverse) {
   return inverse ? buildInverseColumns(n) : buildForwardColumns(n)
 }
@@ -141,6 +175,26 @@ function Tile({ kind, label }) {
       >
         <span>P</span>
         <span style={{ fontSize: 7, fontWeight: 600 }}>({label})</span>
+      </div>
+    )
+  }
+  if (kind === 'X') {
+    return (
+      <div
+        className="flex items-center justify-center rounded-md font-mono text-[14px] font-bold text-white shadow-sm"
+        style={{ width: CELL, height: CELL, background: COLORS.p }}
+      >
+        X
+      </div>
+    )
+  }
+  if (kind === 'target') {
+    return (
+      <div
+        className="flex items-center justify-center rounded-full border-2 font-bold"
+        style={{ width: 22, height: 22, borderColor: COLORS.dot, color: COLORS.dot, fontSize: 15, lineHeight: 1 }}
+      >
+        +
       </div>
     )
   }
@@ -242,9 +296,18 @@ function MiniCircuit({ n, columns }) {
 }
 
 function QFTExpandModal({ type, targets, onClose, onRemove, onEdit }) {
+  const bellSpec = BELL_SPECS[type]
   const isInverse = type === 'IQFT'
-  const n = Math.max(2, targets?.length || 2)
-  const columns = buildColumns(n, isInverse)
+  const n = bellSpec ? 2 : Math.max(2, targets?.length || 2)
+  const columns = bellSpec ? buildBellColumns(type) : buildColumns(n, isInverse)
+
+  const title = bellSpec ? `${bellSpec.title} Gate Expand` : `${isInverse ? 'IQFT' : 'QFT'} Gate Expand`
+  const subtitle = bellSpec
+    ? `The Bell-state preparation block producing ${bellSpec.ket}`
+    : `The ${n}-qubit ${isInverse ? 'inverse QFT' : 'QFT'} block`
+  const footer = bellSpec
+    ? `${BELL_SPECS[type].xRows.length ? 'X · ' : ''}H · CNOT, on qubits 0..1`
+    : `H · controlled-phase · swap, on qubits 0..${n - 1}`
 
   return (
     <AnimatePresence>
@@ -266,10 +329,10 @@ function QFTExpandModal({ type, targets, onClose, onRemove, onEdit }) {
           <div className="mb-4 flex items-start justify-between">
             <div>
               <h3 className="display-serif text-xl font-semibold text-ink">
-                {isInverse ? 'IQFT' : 'QFT'} Gate Expand
+                {title}
               </h3>
               <p className="mt-1 text-[12px] text-muted">
-                The {n}-qubit {isInverse ? 'inverse QFT' : 'QFT'} block
+                {subtitle}
                 {targets ? ` (q${targets[0]}–q${targets[targets.length - 1]})` : ''}, unrolled into elementary gates.
               </p>
             </div>
@@ -288,7 +351,7 @@ function QFTExpandModal({ type, targets, onClose, onRemove, onEdit }) {
 
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
             <span className="font-mono text-[11px] text-faint">
-              H · controlled-phase · swap, on qubits 0..{n - 1}
+              {footer}
             </span>
             <div className="flex shrink-0 gap-2">
               {onEdit && (

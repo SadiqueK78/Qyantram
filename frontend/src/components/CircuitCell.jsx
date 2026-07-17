@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDrag, useDrop } from 'react-dnd'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAI } from '../hooks/useAI'
-import { GATES, GRID, gateSymbol } from '../config/constants'
+import { GATES, GRID, gateSymbol, isBlockType } from '../config/constants'
 import { formatAngle } from '../utils/formatAngle'
 import QFTExpandModal from './QFTExpandModal'
 import QFTEditGateModal from './QFTEditGateModal'
@@ -128,7 +128,7 @@ function CircuitCell({ qubit, step, isHovered }) {
           addGate(qubit, step, { type: 'SWAP', swapQubit: defaultPartner })
           return
         }
-        if (type === 'QFT' || type === 'IQFT') {
+        if (isBlockType(type)) {
           if (qubits < 2) return
           addGate(qubit, step, { type, targets: [qubit, defaultPartner] })
           return
@@ -173,7 +173,7 @@ function CircuitCell({ qubit, step, isHovered }) {
     if (ANGLE_GATES.includes(gate.type)) {
       setAngleDraft(String(gate.theta ?? 1.5708))
       setAnglePopover(true)
-    } else if (gate.type === 'QFT' || gate.type === 'IQFT') {
+    } else if (isBlockType(gate.type)) {
       setQftEditOpen(true)
     } else if (gate.type === 'CNOT' || gate.type === 'CCNOT') {
       setControlEditOpen(true)
@@ -183,7 +183,7 @@ function CircuitCell({ qubit, step, isHovered }) {
   const handleToolbarExpand = () => {
     setToolbarOpen(false)
     if (!gate) return
-    if (gate.type === 'QFT' || gate.type === 'IQFT') {
+    if (isBlockType(gate.type)) {
       setQftExpandOpen(true)
     } else {
       setGateExpandOpen(true)
@@ -243,12 +243,12 @@ function CircuitCell({ qubit, step, isHovered }) {
   const isBarrier = gate?.type === 'Barrier'
   const isMeasure = gate?.type === 'Measure'
 
-  // QFT/IQFT render as a single box spanning every wire it acts on
-  // (Qniverse-style "qft2 a, b" block), rather than a per-cell tile. The
+  // QFT/IQFT/Bell blocks render as a single box spanning every wire they act
+  // on (Qniverse-style "qft2 a, b" block), rather than a per-cell tile. The
   // gate object always lives at the topmost target row (store invariant),
   // so this cell — when it holds one — is always the box's top edge.
   const isQFTBlock =
-    !!gate && (gate.type === 'QFT' || gate.type === 'IQFT') && Array.isArray(gate.targets) && gate.targets.length >= 2
+    !!gate && isBlockType(gate.type) && Array.isArray(gate.targets) && gate.targets.length >= 2
   const qftTargets = isQFTBlock ? gate.targets : []
   const qftSpanHeight = isQFTBlock ? GRID.CELL + (qftTargets.length - 1) * GRID.ROW_PITCH : 0
   const qftSpanTop = `calc(50% - ${GRID.CELL / 2}px)`
@@ -365,7 +365,7 @@ function CircuitCell({ qubit, step, isHovered }) {
         <div
           ref={tileRef}
           onClick={toggleToolbar}
-          title={`${gate.type === 'IQFT' ? 'Inverse QFT' : 'QFT'} block on q${qftTargets[0]}–q${qftTargets[qftTargets.length - 1]} — click for options`}
+          title={`${meta?.label || gate.type} block on q${qftTargets[0]}–q${qftTargets[qftTargets.length - 1]} — click for options`}
           className={`gate-tile ${tileTone} absolute left-1/2 -translate-x-1/2 cursor-pointer`}
           style={{ width: GRID.CELL, top: qftSpanTop, height: qftSpanHeight, zIndex: 5 }}
         >
@@ -385,7 +385,7 @@ function CircuitCell({ qubit, step, isHovered }) {
             className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] font-semibold leading-none"
             style={{ top: qftCenterTop }}
           >
-            {gate.type === 'IQFT' ? 'QFT†' : 'QFT'}
+            {gateSymbol(gate.type)}
           </span>
         </div>
       )}

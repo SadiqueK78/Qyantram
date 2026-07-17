@@ -1,19 +1,23 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { GATES, blockExactTargets } from '../config/constants'
 
 /**
- * "Edit Gate" modal for QFT/IQFT blocks — lets the user pick which qubits
- * the block spans (2 or more), matching the reference checkbox UI. Only
+ * "Edit Gate" modal for block gates (QFT/IQFT/Bell) — lets the user pick
+ * which qubits the block spans, matching the reference checkbox UI. Only
  * consecutive selections are accepted, since the block renders (and the
  * backend applies it) as one contiguous span — same constraint that already
- * governs how the block is dropped/rendered in the circuit editor.
+ * governs how the block is dropped/rendered in the circuit editor. Bell
+ * blocks additionally require exactly 2 qubits.
  */
 function QFTEditGateModal({ type, qubits, currentTargets, onClose, onSave }) {
   const [selected, setSelected] = useState(() => new Set(currentTargets))
+  const exact = blockExactTargets(type)
 
   const sorted = [...selected].sort((a, b) => a - b)
   const contiguous = sorted.length >= 2 && sorted.every((t, i) => i === 0 || t === sorted[i - 1] + 1)
-  const valid = sorted.length >= 2 && contiguous
+  const rightCount = exact ? sorted.length === exact : sorted.length >= 2
+  const valid = rightCount && contiguous
 
   const toggle = (q) => {
     setSelected((prev) => {
@@ -27,8 +31,10 @@ function QFTEditGateModal({ type, qubits, currentTargets, onClose, onSave }) {
   const errorMessage =
     sorted.length === 0
       ? null
-      : sorted.length < 2
-      ? 'Select at least 2 qubits.'
+      : !rightCount
+      ? exact
+        ? `Select exactly ${exact} qubits.`
+        : 'Select at least 2 qubits.'
       : !contiguous
       ? 'Selected qubits must be consecutive (e.g. q0, q1, q2).'
       : null
@@ -59,7 +65,7 @@ function QFTEditGateModal({ type, qubits, currentTargets, onClose, onSave }) {
 
           <div className="px-6 py-5">
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-              {type === 'IQFT' ? 'Inverse QFT' : 'QFT'} — select qubits :
+              {GATES[type]?.label || type} — select qubits :
             </p>
             <div className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
               {Array.from({ length: qubits }, (_, q) => (

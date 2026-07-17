@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAutoSimulate } from '../hooks/useAutoSimulate'
+import { useAI } from '../hooks/useAI'
 import { GRID, CIRCUIT_CONFIG } from '../config/constants'
 import CircuitCell from './CircuitCell'
 
 function CircuitGrid() {
-  const { qubits, steps, circuit, gates, setQubits, setSteps, resetCircuit } = useCircuitStore()
+  const { qubits, steps, circuit, gates, setQubits, setSteps, resetCircuit, isAILoading } = useCircuitStore()
   const { isSimulating, error } = useAutoSimulate()
+  const { handleExplainCircuit } = useAI()
   const [hoveredCell, setHoveredCell] = useState(null)
 
   const gateCount = gates.length
@@ -42,6 +44,16 @@ function CircuitGrid() {
               </>
             )}
           </div>
+          {/* Explain Circuit — opens the AI Tutor panel with a full-circuit
+              walkthrough of whatever is currently on the grid. */}
+          <button
+            className="btn-ghost"
+            onClick={handleExplainCircuit}
+            disabled={isAILoading || gateCount === 0}
+            title={gateCount === 0 ? 'Add gates to the circuit first' : 'Get an AI explanation of this circuit'}
+          >
+            {isAILoading ? 'Explaining…' : '✦ Explain Circuit'}
+          </button>
           <button className="btn-ghost" onClick={resetCircuit}>
             Reset
           </button>

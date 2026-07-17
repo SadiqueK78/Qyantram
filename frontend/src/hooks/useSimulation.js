@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import axios from 'axios'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { API_ENDPOINTS } from '../config/api'
+import { isBlockType } from '../config/constants'
 
 /**
  * Shared simulation runner. Converts the visual circuit grid into the backend
@@ -36,7 +37,7 @@ export function useSimulation() {
             control2: gate.controlQubit2,
           }),
           ...(gate.type === 'SWAP' && { swap_with: gate.swapQubit }),
-          ...((gate.type === 'QFT' || gate.type === 'IQFT') &&
+          ...(isBlockType(gate.type) &&
             Array.isArray(gate.targets) && { targets: gate.targets }),
           ...(gate.theta !== undefined && { theta: gate.theta }),
         })

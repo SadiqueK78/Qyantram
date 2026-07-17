@@ -82,6 +82,35 @@ def build_qft_block_gate(n: int, inverse: bool = False):
     return gate.inverse() if inverse else gate
 
 
+# Which X gates precede the H+CNOT core for each Bell block. Wire 0 is the
+# block's top target ("a"), wire 1 the bottom ("b"). Standard preparation:
+# X gates select the basis pair, then H(a) + CNOT(a->b) entangle it.
+#   |Phi+> = (|00>+|11>)/sqrt(2) : no X
+#   |Phi-> = (|00>-|11>)/sqrt(2) : X(a)
+#   |Psi+> = (|01>+|10>)/sqrt(2) : X(b)
+#   |Psi-> = (|01>-|10>)/sqrt(2) : X(a), X(b)
+BELL_BLOCK_X = {
+    'BELL_PHI_PLUS': (),
+    'BELL_PHI_MINUS': (0,),
+    'BELL_PSI_PLUS': (1,),
+    'BELL_PSI_MINUS': (0, 1),
+}
+
+
+def build_bell_block_gate(bell_type: str):
+    """
+    Build a 2-qubit Bell-state preparation block as a self-contained gate,
+    the same way build_qft_block_gate scopes a QFT to the wires it was
+    dropped on. Applied to |00> it produces the corresponding Bell state.
+    """
+    sub = QuantumCircuit(2, name=bell_type)
+    for wire in BELL_BLOCK_X[bell_type]:
+        sub.x(wire)
+    sub.h(0)
+    sub.cx(0, 1)
+    return sub.to_gate(label=bell_type)
+
+
 # Quantum circuit builder and simulator
 class QuantumCircuitBuilder:
     """Helper class to build and simulate quantum circuits"""
@@ -187,6 +216,25 @@ class QuantumCircuitBuilder:
 
                     qft_gate = build_qft_block_gate(len(targets), inverse=(gate_type == 'IQFT'))
                     qc.append(qft_gate, targets)
+                elif gate_type in BELL_BLOCK_X:
+                    # A Bell-state block scoped to the two qubits it was
+                    # dropped across — targets[0] is the top wire (H +
+                    # control), targets[1] the bottom (CNOT target).
+                    targets = gate.get('targets')
+                    if not targets:
+                        a = gate.get('target')
+                        b = gate.get('partnerQubit', gate.get('partner'))
+                        targets = [a, b]
+                    targets = [int(t) for t in targets if t is not None]
+
+                    if len(targets) != 2:
+                        raise ValueError(f'{gate_type} requires exactly 2 target qubits')
+                    if targets[0] == targets[1]:
+                        raise ValueError(f'{gate_type} target qubits must be distinct')
+                    if any(t < 0 or t >= qc.num_qubits for t in targets):
+                        raise ValueError(f'{gate_type} target qubit out of range')
+
+                    qc.append(build_bell_block_gate(gate_type), targets)
                 elif gate_type == 'MEASURE':
                     pass  # Measurement will be added after all gates
                 else:
@@ -455,6 +503,30 @@ def get_available_gates():
             'type': 'IQFT',
             'name': 'Inverse QFT',
             'description': 'Inverse Quantum Fourier Transform block across the target qubits',
+            'qubits_required': 2
+        },
+        {
+            'type': 'BELL_PHI_PLUS',
+            'name': 'Bell |Phi+>',
+            'description': 'Bell-state block preparing (|00>+|11>)/sqrt(2) — H then CNOT',
+            'qubits_required': 2
+        },
+        {
+            'type': 'BELL_PHI_MINUS',
+            'name': 'Bell |Phi->',
+            'description': 'Bell-state block preparing (|00>-|11>)/sqrt(2) — X, H then CNOT',
+            'qubits_required': 2
+        },
+        {
+            'type': 'BELL_PSI_PLUS',
+            'name': 'Bell |Psi+>',
+            'description': 'Bell-state block preparing (|01>+|10>)/sqrt(2) — X on target, H then CNOT',
+            'qubits_required': 2
+        },
+        {
+            'type': 'BELL_PSI_MINUS',
+            'name': 'Bell |Psi->',
+            'description': 'Singlet Bell-state block preparing (|01>-|10>)/sqrt(2) — X on both, H then CNOT',
             'qubits_required': 2
         },
         {
