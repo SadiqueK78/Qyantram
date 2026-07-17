@@ -1,61 +1,157 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import { useAutoSimulate } from '../hooks/useAutoSimulate'
 import { useAI } from '../hooks/useAI'
 import { GRID, CIRCUIT_CONFIG } from '../config/constants'
 import CircuitCell from './CircuitCell'
 
+// Small icon button used across the editor toolbar row.
+function ToolBtn({ onClick, disabled, title, children, active }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] transition-colors
+        ${active ? 'text-[color:rgb(var(--accent))]' : 'text-muted hover:text-ink'}
+        ${disabled ? 'cursor-not-allowed opacity-40 hover:text-muted' : ''}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+const Sep = () => <span className="h-4 w-px bg-line" />
+
 function CircuitGrid() {
-  const { qubits, steps, circuit, gates, setQubits, setSteps, resetCircuit, isAILoading } = useCircuitStore()
+  const {
+    qubits, steps, gates, setQubits, setSteps, resetCircuit,
+    undo, redo, historyIndex, history,
+    circuitName, setCircuitName, debugMode, toggleDebug,
+    saveCircuit, loadCircuit, isAILoading,
+  } = useCircuitStore()
   const { isSimulating, error } = useAutoSimulate()
   const { handleExplainCircuit } = useAI()
   const [hoveredCell, setHoveredCell] = useState(null)
+  const [expanded, setExpanded] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
+  const manageRef = useRef(null)
+  const fileRef = useRef(null)
 
-  const gateCount = gates.length
-  // Only render columns up to a little past the last used step to keep it tidy.
+  useEffect(() => {
+    const onClick = (e) => {
+      if (manageRef.current && !manageRef.current.contains(e.target)) setManageOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  const handleLoadFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        loadCircuit(JSON.parse(ev.target.result))
+      } catch {
+        window.alert('Invalid circuit file')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+    setManageOpen(false)
+  }
+
+  // Render exactly as many step columns as the user selected, so the sequence
+  // numbers (1..N) always match the "Steps" control — but never fewer than the
+  // gates actually occupy.
   const usedMax = gates.reduce((m, g) => Math.max(m, g.step), -1)
-  const visibleSteps = Math.min(steps, Math.max(8, usedMax + 2))
+  const visibleSteps = Math.max(steps, usedMax + 1)
 
   return (
-    <section className="panel p-6">
-      {/* Header */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="eyebrow mb-1">Circuit Editor</div>
-          <div className="text-[13px] text-muted">
-            {qubits} qubit{qubits > 1 ? 's' : ''} · {gateCount} gate{gateCount === 1 ? '' : 's'}
-          </div>
+    <section className={`panel p-5 ${expanded ? 'fixed inset-4 z-[80] overflow-auto shadow-2xl' : ''}`}>
+      {/* Editor toolbar row */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgb(var(--ink)/0.05)] font-mono text-[13px] text-muted">
+          {'</>'}
+        </span>
+        <input
+          value={circuitName}
+          onChange={(e) => setCircuitName(e.target.value)}
+          spellCheck={false}
+          className="w-44 rounded-md border border-line bg-panel px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-[rgb(var(--accent))]"
+        />
+
+        <Sep />
+        <div ref={manageRef} className="relative">
+          <ToolBtn onClick={() => setManageOpen((v) => !v)} title="Manage circuit">
+            Manage <span className="text-[9px]">▾</span>
+          </ToolBtn>
+          {manageOpen && (
+            <div className="absolute left-0 top-9 z-40 w-44 overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-xl">
+              <button onClick={() => { saveCircuit(); setManageOpen(false) }} className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-[rgb(var(--ink)/0.05)]">Save Circuit</button>
+              <button onClick={() => fileRef.current?.click()} className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-[rgb(var(--ink)/0.05)]">Load Circuit</button>
+              <button onClick={() => { resetCircuit(); setManageOpen(false) }} className="block w-full px-3 py-2 text-left text-[13px] text-ink hover:bg-[rgb(var(--ink)/0.05)]">Reset Circuit</button>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-3">
-          {/* Live status indicator — replaces the old manual Run button. The
-              circuit now re-simulates automatically on any edit (gate
-              add/remove/move, qubit count change), so there's nothing left
-              to click; this just reflects current status. */}
-          <div className="flex items-center gap-1.5 text-[12px] text-muted">
+
+        <Sep />
+        <ToolBtn onClick={undo} disabled={historyIndex <= 0} title="Undo">
+          <span>↶</span> Undo
+        </ToolBtn>
+        <ToolBtn onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo">
+          <span>↷</span> Redo
+        </ToolBtn>
+        <ToolBtn onClick={resetCircuit} title="Clear circuit">
+          <span>⌫</span> Clear
+        </ToolBtn>
+
+        <Sep />
+        <button
+          onClick={toggleDebug}
+          title="Toggle debug"
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition-colors
+            ${debugMode
+              ? 'border-[rgb(var(--accent))] text-[color:rgb(var(--accent))]'
+              : 'border-line text-muted hover:text-ink'}`}
+        >
+          <span className={`h-2 w-2 rounded-full ${debugMode ? 'bg-[color:rgb(var(--accent))]' : 'bg-faint'}`} />
+          Debug
+        </button>
+
+        <button
+          onClick={handleExplainCircuit}
+          disabled={isAILoading || gates.length === 0}
+          title={gates.length === 0 ? 'Add gates to the circuit first' : 'Get an AI explanation of this circuit'}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--accent)/0.08)]
+            px-3 py-1 text-[12px] font-medium text-[color:rgb(var(--accent))] transition-colors
+            hover:bg-[rgb(var(--accent)/0.16)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isAILoading ? 'Explaining…' : '✦ Explain Circuit'}
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="flex items-center gap-1.5 text-[12px] text-muted">
             {isSimulating ? (
               <>
                 <span className="spin h-3 w-3 rounded-full border-2 border-[color:rgb(var(--accent))] border-t-transparent" />
-                <span>Simulating…</span>
+                Simulating…
               </>
             ) : (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-[color:rgb(var(--accent))]" />
-                <span>Live</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-[color:rgb(var(--accent))]" /> Live
               </>
             )}
-          </div>
-          {/* Explain Circuit — opens the AI Tutor panel with a full-circuit
-              walkthrough of whatever is currently on the grid. */}
+          </span>
           <button
-            className="btn-ghost"
-            onClick={handleExplainCircuit}
-            disabled={isAILoading || gateCount === 0}
-            title={gateCount === 0 ? 'Add gates to the circuit first' : 'Get an AI explanation of this circuit'}
+            onClick={() => setExpanded((v) => !v)}
+            title={expanded ? 'Exit fullscreen' : 'Fullscreen'}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-[rgb(var(--ink)/0.06)] hover:text-ink"
           >
-            {isAILoading ? 'Explaining…' : '✦ Explain Circuit'}
-          </button>
-          <button className="btn-ghost" onClick={resetCircuit}>
-            Reset
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
           </button>
         </div>
       </div>
@@ -68,13 +164,13 @@ function CircuitGrid() {
 
       {/* Grid */}
       <div className="overflow-x-auto pb-2">
-        <div className="inline-block min-w-full">
+        <div className="min-w-full">
           {/* Step numbers (1-based) */}
           <div className="flex" style={{ paddingLeft: GRID.LABEL_WIDTH }}>
             {Array.from({ length: visibleSteps }).map((_, i) => (
               <div
                 key={i}
-                className="text-center text-[11px] font-medium text-faint"
+                className="shrink-0 text-center text-[11px] font-medium text-faint"
                 style={{ width: GRID.COL_WIDTH }}
               >
                 {i + 1}
@@ -82,19 +178,17 @@ function CircuitGrid() {
             ))}
           </div>
 
-          {/* Wires */}
+          {/* Quantum wires */}
           {Array.from({ length: qubits }).map((_, q) => (
-            <div key={q} className="flex items-center">
+            <div key={q} className="flex w-full items-center">
               <div
-                className="flex items-center justify-end gap-1.5 pr-3 font-mono text-[12px]"
+                className="flex shrink-0 items-center justify-end gap-1.5 pr-3 font-mono text-[12px]"
                 style={{ width: GRID.LABEL_WIDTH, height: GRID.ROW_PITCH }}
               >
                 <span className="text-muted">q{q}</span>
-                <span className="text-faint">|0⟩</span>
               </div>
 
-              <div className="relative flex items-center">
-                {/* continuous wire */}
+              <div className="relative flex flex-1 items-center">
                 <div
                   className="pointer-events-none absolute left-0 right-0"
                   style={{ top: '50%', height: 1, background: 'rgb(var(--grid-wire))', transform: 'translateY(-50%)' }}
@@ -111,22 +205,21 @@ function CircuitGrid() {
             </div>
           ))}
 
-          {/* Classical register (double line) */}
-          <div className="flex items-center">
-            <div
-              className="flex items-center justify-end pr-3 font-mono text-[12px] text-faint"
-              style={{ width: GRID.LABEL_WIDTH, height: 28 }}
-            >
-              c
+          {/* Classical registers — one red double-line per qubit (c0..cN) */}
+          {Array.from({ length: qubits }).map((_, c) => (
+            <div key={`c${c}`} className="flex w-full items-center">
+              <div
+                className="flex shrink-0 items-center justify-end pr-3 font-mono text-[12px]"
+                style={{ width: GRID.LABEL_WIDTH, height: 40, color: 'rgb(var(--grid-classical))' }}
+              >
+                c{c}
+              </div>
+              <div className="relative flex flex-1 items-center" style={{ height: 40 }}>
+                <div className="absolute left-0 right-0" style={{ top: 'calc(50% - 2px)', height: 1, background: 'rgb(var(--grid-classical))' }} />
+                <div className="absolute left-0 right-0" style={{ top: 'calc(50% + 2px)', height: 1, background: 'rgb(var(--grid-classical))' }} />
+              </div>
             </div>
-            <div className="relative flex items-center" style={{ height: 28, width: visibleSteps * GRID.COL_WIDTH }}>
-              <div className="absolute left-0 right-0" style={{ top: 'calc(50% - 2px)', height: 1, background: 'rgb(var(--grid-wire))' }} />
-              <div className="absolute left-0 right-0" style={{ top: 'calc(50% + 2px)', height: 1, background: 'rgb(var(--grid-wire))' }} />
-              <span className="absolute font-mono text-[10px] text-faint" style={{ left: 6, top: '55%' }}>
-                {qubits}
-              </span>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -163,6 +256,8 @@ function CircuitGrid() {
           <span className="w-4 font-mono text-ink">{steps}</span>
         </div>
       </div>
+
+      <input ref={fileRef} type="file" accept=".json" onChange={handleLoadFile} className="hidden" />
     </section>
   )
 }

@@ -109,7 +109,7 @@ const normalizeCircuitCollection = (payload) => {
 
 const buildCircuitState = (parsedCircuit) => {
   const maxStep = parsedCircuit.gates.reduce((max, g) => Math.max(max, Number(g.step ?? 0)), 0)
-  const steps = Math.max(10, maxStep + 1)
+  const steps = Math.max(14, maxStep + 1)
 
   const newCircuit = createEmptyCircuit(parsedCircuit.qubits, steps)
   const gates = []
@@ -201,13 +201,23 @@ const buildCircuitState = (parsedCircuit) => {
 export const useCircuitStore = create((set, get) => ({
   // State
   qubits: 2,
-  steps: 10,
+  steps: 14,
   shots: DEFAULT_SHOTS,
-  circuit: createEmptyCircuit(2, 10),
+  circuit: createEmptyCircuit(2, 14),
   gates: [],
   simulationResult: null,
   isSimulating: false,
   selectedQubit: 0,
+
+  // Editor chrome
+  circuitName: 'unnamed-Circuit',
+  setCircuitName: (name) => set({ circuitName: name }),
+  debugMode: false,
+  toggleDebug: () => set((state) => ({ debugMode: !state.debugMode })),
+
+  // Top-level view: 'editor' (main simulation page) | 'templates' (gallery)
+  view: 'editor',
+  setView: (view) => set({ view }),
 
   // Theme
   theme: INITIAL_THEME,

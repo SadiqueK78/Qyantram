@@ -275,7 +275,7 @@ function CircuitCell({ qubit, step, isHovered }) {
         cellRef.current = el
       }}
       onContextMenu={handleContextMenu}
-      className={`circuit-cell ${isOver && canDrop ? 'valid-drop' : ''} ${isOver && !canDrop ? 'invalid-drop' : ''} ${isHighlighted ? 'step-highlighted' : ''}`}
+      className={`circuit-cell shrink-0 ${isOver && canDrop ? 'valid-drop' : ''} ${isOver && !canDrop ? 'invalid-drop' : ''} ${isHighlighted ? 'step-highlighted' : ''}`}
       style={{ width: GRID.COL_WIDTH, height: GRID.ROW_PITCH, color: meta ? 'var(--g-fg)' : 'inherit' }}
     >
       {/* multi-qubit connectors + draggable nodes */}

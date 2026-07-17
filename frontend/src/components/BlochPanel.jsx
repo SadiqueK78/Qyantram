@@ -1,6 +1,7 @@
 import React, { useRef } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import QSphere from './QSphere'
+import CardHeader from './CardHeader'
 
 // The ground state |0...0⟩ for a given qubit count — what an empty circuit
 // (or a circuit that hasn't been run yet) actually represents. Showing this
@@ -44,12 +45,10 @@ function BlochPanel() {
 
   return (
     <section className="panel p-6">
-      <div className="mb-4">
-        <div className="eyebrow mb-1">Q-Sphere</div>
-        <div className="text-[13px] text-muted">
-          Joint {displayed.qubits}-qubit statevector · one point per basis state
-        </div>
-      </div>
+      <CardHeader
+        title="Q-Sphere"
+        info={`Joint ${displayed.qubits}-qubit statevector — one point per basis state, sized by probability.`}
+      />
 
       {hasResult ? (
         <QSphere statevector={displayed.statevector} qubits={displayed.qubits} />

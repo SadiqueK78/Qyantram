@@ -1,9 +1,9 @@
 import React from 'react'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
-import Sidebar from './components/Sidebar'
+import { useCircuitStore } from './store/useCircuitStore'
 import TopNav from './components/TopNav'
-import Hero from './components/Hero'
+import GatePalette from './components/GatePalette'
 import CircuitGrid from './components/CircuitGrid'
 import CircuitDetails from './components/CircuitDetails'
 import StatevectorPanel from './components/StatevectorPanel'
@@ -11,9 +11,12 @@ import BlochPanel from './components/BlochPanel'
 import MeasurementStats from './components/MeasurementStats'
 import CodeViewPanel from './components/CodeViewPanel'
 import AIAssistantPanel from './components/AIAssistantPanel'
+import Footer from './components/Footer'
+import TemplatesPage from './components/TemplatesPage'
 import WelcomePrompt from './components/WelcomePrompt'
 
 function App() {
+  const view = useCircuitStore((s) => s.view)
   const [showWelcome, setShowWelcome] = React.useState(false)
   const circuitRef = React.useRef(null)
   const [circuitHeight, setCircuitHeight] = React.useState(null)
@@ -38,7 +41,7 @@ function App() {
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [view])
 
   const dismissWelcome = (persist) => {
     if (persist) window.localStorage.setItem('quantum-welcome-dismissed', '1')
@@ -47,48 +50,39 @@ function App() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="flex min-h-screen bg-paper text-ink">
-        {/* Left rail */}
-        <div className="sticky top-0 hidden h-screen w-[220px] shrink-0 lg:block">
-          <Sidebar />
-        </div>
+      <div className="flex min-h-screen flex-col bg-paper text-ink">
+        <TopNav />
 
-        {/* Main column */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopNav />
+        {view === 'templates' ? (
+          <TemplatesPage />
+        ) : (
+          <main className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-6 lg:px-8">
+            <GatePalette />
 
-          <main className="mx-auto w-full max-w-[1560px] px-8 py-8">
-            <Hero />
-
-            {/* Top: circuit editor + live code view, side by side.
-                items-start keeps Circuit Editor at its own natural height —
-                Code View is handed that exact height as a prop (measured via
-                ResizeObserver above) and fills it, scrolling its code
-                internally rather than growing the card. */}
-            <div className="mt-8 grid grid-cols-1 items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+            {/* Circuit editor + live code view, side by side. */}
+            <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
               <div ref={circuitRef}>
                 <CircuitGrid />
               </div>
               <CodeViewPanel height={circuitHeight} />
             </div>
 
-            {/* Below: matching the reference's 3-column rhythm — chart,
-                state-visualization, and a third column — since we have four
-                panels instead of their three (no Jobs panel here, and they
-                don't have a separate amplitudes list), Circuit Details and
-                Statevector are stacked together into that third slot.
-                items-start again, so e.g. Statevector's amplitude list
-                growing with more qubits doesn't stretch Q-Sphere or
-                Measurement Stats taller than their own content needs. */}
-            <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+            {/* Bottom analytics — balanced 2×2 grid (distribution + Q-sphere
+                on top, details + statevector below). Cards stretch to equal
+                heights per row; the Probability and Statevector panels fill
+                their partner's height (chart grows / list scrolls) so paired
+                cards line up without blank space. */}
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
               <MeasurementStats />
               <BlochPanel />
-              <div className="space-y-6">
-                <CircuitDetails />
-                <StatevectorPanel />
-              </div>
+              <CircuitDetails />
+              <StatevectorPanel />
             </div>
           </main>
+        )}
+
+        <div className="mx-auto w-full max-w-[1560px] px-6 lg:px-8">
+          <Footer />
         </div>
       </div>
 

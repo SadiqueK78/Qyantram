@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
 import Histogram from './Histogram'
+import CardHeader from './CardHeader'
 
 // A short natural-language summary of the outcome distribution.
 function buildCaption(result) {
@@ -55,38 +56,31 @@ function MeasurementStats() {
   }
 
   return (
-    <section className="panel p-6">
-      <div className="mb-4 flex items-start justify-between">
-        <div>
-          <div className="eyebrow mb-1">Measurement Statistics</div>
-          <div className="text-[13px] text-muted">{shots} shots</div>
-        </div>
-        <div className="relative">
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            className="cursor-pointer rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink outline-none"
-          >
-            <option value="probability">View: Probability</option>
-            <option value="counts">View: Counts</option>
-          </select>
-        </div>
-      </div>
+    <section className="panel flex flex-col p-6">
+      <CardHeader
+        title={mode === 'counts' ? 'Measurement Counts' : 'Probability Distribution'}
+        options={['Probability Distribution', 'Measurement Counts']}
+        onSelect={(opt) => setMode(opt === 'Measurement Counts' ? 'counts' : 'probability')}
+        info={`Outcome distribution over ${shots} shots — the chance of measuring each computational basis state.`}
+        menu={[{ label: 'Export Results ↧', onClick: exportResults }]}
+      />
 
       {hasResult ? (
-        <>
-          <Histogram result={displayedResult} mode={mode} />
-          {caption && (
-            <p className="mt-4 border-t border-line pt-3 font-serif text-[13px] italic leading-relaxed text-muted">
-              {caption}
-            </p>
-          )}
-          <div className="mt-4 flex justify-end">
-            <button className="btn-ghost" onClick={exportResults}>
-              Export Results ↧
-            </button>
+        /* The chart lives in an absolute-fill wrapper so this card doesn't
+           drive the grid row's height — it adopts the Q-sphere's height and
+           the chart stretches to fill it exactly. */
+        <div className="relative min-h-[280px] flex-1">
+          <div className="absolute inset-0 flex flex-col">
+            <div className="min-h-0 flex-1">
+              <Histogram result={displayedResult} mode={mode} />
+            </div>
+            {caption && (
+              <p className="mt-3 border-t border-line pt-3 font-serif text-[13px] italic leading-relaxed text-muted">
+                {caption}
+              </p>
+            )}
           </div>
-        </>
+        </div>
       ) : (
         <div className="py-10 text-center text-[13px] text-muted">Run a simulation to see statistics</div>
       )}

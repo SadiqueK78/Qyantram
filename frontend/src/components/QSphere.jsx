@@ -136,7 +136,7 @@ function QSphere({ statevector, qubits }) {
     const mount = mountRef.current
     if (!mount) return undefined
     const width = mount.clientWidth || 300
-    const height = 340
+    const height = 380
 
     const inkStr = cssVar('--ink', 'rgb(30,30,30)')
     const accent = new THREE.Color(cssVar('--accent', 'rgb(79,70,229)'))
@@ -186,10 +186,10 @@ function QSphere({ statevector, qubits }) {
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100)
     // IBM's Q-sphere default view: nearly front-on with a gentle downward tilt,
     // so the north pole (|00..0>) sits near the top of the frame and equatorial
-    // states fan out clearly below it. Pulled back a bit further than a tight
-    // fit so the sphere reads as a small object in space, like IBM's.
-    camera.position.set(0.55, 1.35, 4.05)
-    camera.lookAt(0, 0, 0)
+    // states fan out clearly below it. Camera pulled in closer than a tight fit
+    // so the sphere reads bigger by default.
+    camera.position.set(0.45, 1.15, 3.5)
+    camera.lookAt(0, 0.22, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(window.devicePixelRatio)
@@ -200,8 +200,11 @@ function QSphere({ statevector, qubits }) {
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
     controls.enableDamping = true
-    controls.minDistance = 3.2
+    controls.minDistance = 2.8
     controls.maxDistance = 7
+    // Orbit target sits slightly ABOVE the sphere's true center, which renders
+    // the sphere a bit lower in the card (more headroom above the north pole).
+    controls.target.set(0, 0.22, 0)
 
     // Soft, matte, solid-looking sphere — pale porcelain ball with a gentle
     // top-to-bottom gradient (bright highlight near the pole, soft shadow
@@ -378,7 +381,7 @@ function QSphere({ statevector, qubits }) {
 
   return (
     <div className="w-full">
-      <div className="relative w-full" style={{ height: 340 }}>
+      <div className="relative w-full" style={{ height: 380 }}>
         <div ref={mountRef} className="h-full w-full" />
         {pick && (
           <InfoCard

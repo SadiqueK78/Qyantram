@@ -1,5 +1,6 @@
 import React from 'react'
 import { useCircuitStore } from '../store/useCircuitStore'
+import CardHeader from './CardHeader'
 
 function Row({ label, value }) {
   return (
@@ -19,7 +20,7 @@ function CircuitDetails() {
 
   return (
     <section className="panel p-6">
-      <div className="eyebrow mb-3">Circuit Details</div>
+      <CardHeader title="Circuit Details" info="Structural metrics for the current circuit." />
       <Row label="Depth" value={depth} />
       <Row label="Width" value={qubits} />
       <Row label="Gate Count" value={gates.length} />
