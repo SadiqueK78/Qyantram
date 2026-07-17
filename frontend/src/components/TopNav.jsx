@@ -4,6 +4,17 @@ import { ALGORITHM_TEMPLATES } from '../data/templates'
 
 const NAV = ['Dashboard', 'Documentation', 'About']
 
+const HELP_HOME = 'https://quantum.cloud.ibm.com/docs/en/guides'
+const HELP_LINKS = [
+  { label: 'All Guides', url: HELP_HOME },
+  { label: 'Install Qiskit', url: 'https://quantum.cloud.ibm.com/docs/en/guides/install-qiskit' },
+  { label: 'Hello World', url: 'https://quantum.cloud.ibm.com/docs/en/guides/hello-world' },
+  { label: 'Build Circuits', url: 'https://quantum.cloud.ibm.com/docs/en/guides/map-problem-to-circuits' },
+  { label: 'Tutorials', url: 'https://quantum.cloud.ibm.com/docs/en/tutorials' },
+  { label: 'Qiskit API Reference', url: 'https://quantum.cloud.ibm.com/docs/en/api/qiskit' },
+  { label: 'Qiskit Runtime API', url: 'https://quantum.cloud.ibm.com/docs/en/api/qiskit-ibm-runtime' },
+]
+
 function SunIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
@@ -36,14 +47,19 @@ function TopNav() {
   const [active, setActive] = useState('Dashboard')
   const [toolsOpen, setToolsOpen] = useState(false)
   const [tmplOpen, setTmplOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef(null)
   const toolsRef = useRef(null)
+  const helpRef = useRef(null)
 
   useEffect(() => {
     const onClick = (e) => {
       if (toolsRef.current && !toolsRef.current.contains(e.target)) {
         setToolsOpen(false)
         setTmplOpen(false)
+      }
+      if (helpRef.current && !helpRef.current.contains(e.target)) {
+        setHelpOpen(false)
       }
     }
     document.addEventListener('mousedown', onClick)
@@ -94,6 +110,45 @@ function TopNav() {
             {item}
           </button>
         ))}
+
+        {/* Help dropdown */}
+        <div ref={helpRef} className="relative">
+          <button
+            onClick={() => {
+              window.open(HELP_HOME, '_blank', 'noopener,noreferrer')
+              setHelpOpen(false)
+            }}
+            className="nav-link"
+          >
+            Help
+          </button>
+          <button
+            onClick={() => setHelpOpen((v) => !v)}
+            aria-label="Help menu"
+            className="nav-link ml-1 text-[10px]"
+          >
+            ▾
+          </button>
+
+          {helpOpen && (
+            <div className="absolute left-0 top-9 z-40 w-64 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+              {HELP_LINKS.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setHelpOpen(false)}
+                  className="flex w-full items-center justify-between gap-6 px-3 py-2 text-left text-[13px]
+                    text-ink hover:bg-[rgb(var(--ink)/0.05)] transition-colors"
+                >
+                  <span>{link.label}</span>
+                  <span className="text-faint">↗</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="flex items-center gap-3">
