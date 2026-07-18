@@ -189,6 +189,14 @@ function TopNav() {
               </div>
             )}
           </div>
+
+          {/* About Us — opens the full-page about section */}
+          <button
+            className="menu-link"
+            onClick={() => { setView('about'); close() }}
+          >
+            About Us
+          </button>
         </nav>
       </div>
 

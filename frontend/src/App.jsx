@@ -13,6 +13,7 @@ import CodeViewPanel from './components/CodeViewPanel'
 import AIAssistantPanel from './components/AIAssistantPanel'
 import Footer from './components/Footer'
 import TemplatesPage from './components/TemplatesPage'
+import AboutPage from './components/AboutPage'
 import WelcomePrompt from './components/WelcomePrompt'
 
 function App() {
@@ -55,6 +56,8 @@ function App() {
 
         {view === 'templates' ? (
           <TemplatesPage />
+        ) : view === 'about' ? (
+          <AboutPage />
         ) : (
           <main className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-6 lg:px-8">
             <GatePalette />

@@ -70,7 +70,7 @@ function WelcomePrompt({ onStart }) {
         </div>
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-faint">
-          Developed by Sadique Khatib, Sharyu Kekane, Akshada Kale, Abhushan Bokade · K. K. Wagh
+          Developed by Sadique Khatib, Sharyu Kekane, Abhushan Bokade · K. K. Wagh
           Institute of Engineering Education and Research, Nashik
         </p>
       </motion.div>
