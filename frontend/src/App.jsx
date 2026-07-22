@@ -14,6 +14,7 @@ import AIAssistantPanel from './components/AIAssistantPanel'
 import Footer from './components/Footer'
 import TemplatesPage from './components/TemplatesPage'
 import AboutPage from './components/AboutPage'
+import EncodePage from './components/EncodePage'
 import WelcomePrompt from './components/WelcomePrompt'
 
 function App() {
@@ -58,6 +59,8 @@ function App() {
           <TemplatesPage />
         ) : view === 'about' ? (
           <AboutPage />
+        ) : view === 'encode' ? (
+          <EncodePage />
         ) : (
           <main className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-6 lg:px-8">
             <GatePalette />

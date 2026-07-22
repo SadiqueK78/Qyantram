@@ -111,6 +111,199 @@ def build_bell_block_gate(bell_type: str):
     return sub.to_gate(label=bell_type)
 
 
+# =============================================================================
+# Classical -> quantum data encoding.
+#
+# Three standard schemes for loading classical data into a quantum state,
+# each returned as a list of gates in the SAME editor format /simulate consumes
+# ({"type", "target", "step", optional "control"/"theta"}). That means an
+# encoding circuit can be visualized here AND loaded straight into the circuit
+# editor, where every existing panel (statevector, Q-sphere, histogram) works
+# on it unchanged.
+# =============================================================================
+
+# Keep encoding circuits inside the same size envelope the rest of the app
+# uses. Amplitude encoding grows a circuit as log2(len(data)); basis/angle grow
+# it linearly, one qubit per value — so cap the qubit count, not the data length.
+MAX_ENCODING_QUBITS = 8
+
+
+def _parse_bits(data):
+    """Coerce basis-encoding input into a list of 0/1 ints.
+
+    Accepts a bitstring ("1011"), a list of numbers/bools, or a comma/space
+    separated string ("1, 0, 1"). Any nonzero value counts as 1.
+    """
+    if isinstance(data, str):
+        cleaned = data.strip()
+        if all(c in '01' for c in cleaned) and cleaned:
+            tokens = list(cleaned)
+        else:
+            tokens = [t for t in cleaned.replace(',', ' ').split() if t != '']
+    elif isinstance(data, (list, tuple)):
+        tokens = list(data)
+    else:
+        raise ValueError('Basis encoding needs a bitstring or a list of bits')
+
+    if not tokens:
+        raise ValueError('No data provided to encode')
+
+    bits = []
+    for tok in tokens:
+        try:
+            bits.append(1 if float(tok) != 0 else 0)
+        except (TypeError, ValueError):
+            raise ValueError(f'Invalid bit value: {tok!r}')
+    return bits
+
+
+def _parse_numbers(data):
+    """Coerce amplitude/angle input into a list of floats."""
+    if isinstance(data, str):
+        tokens = [t for t in data.replace(',', ' ').split() if t != '']
+    elif isinstance(data, (list, tuple)):
+        tokens = list(data)
+    else:
+        raise ValueError('Encoding needs a list of numbers')
+
+    if not tokens:
+        raise ValueError('No data provided to encode')
+
+    values = []
+    for tok in tokens:
+        try:
+            values.append(float(tok))
+        except (TypeError, ValueError):
+            raise ValueError(f'Invalid number: {tok!r}')
+    return values
+
+
+def _circuit_to_editor_gates(qc: QuantumCircuit):
+    """Flatten a Qiskit circuit into editor-format gates (one per time step).
+
+    Used by amplitude encoding, whose state-preparation circuit is produced by
+    the transpiler rather than hand-built. Only the gate set amplitude encoding
+    transpiles to (ry, rz, rx, x, h, cx) is mapped; anything else is skipped.
+    """
+    editor_gates = []
+    step = 0
+    single = {'ry': 'RY', 'rz': 'RZ', 'rx': 'RX', 'x': 'X', 'h': 'H'}
+    for instruction in qc.data:
+        op = instruction.operation
+        qubits = [qc.find_bit(q).index for q in instruction.qubits]
+        name = op.name
+        if name in single:
+            gate = {'type': single[name], 'target': qubits[0], 'step': step}
+            if name in ('ry', 'rz', 'rx'):
+                gate['theta'] = float(op.params[0])
+            editor_gates.append(gate)
+        elif name == 'cx':
+            editor_gates.append({
+                'type': 'CNOT', 'target': qubits[1], 'control': qubits[0], 'step': step,
+            })
+        elif name in ('barrier', 'id'):
+            continue
+        else:
+            # global phase / unmapped op — irrelevant to the visualized state
+            continue
+        step += 1
+    return editor_gates
+
+
+def _basis_encoding(data):
+    """|b_0 b_1 ... > : one qubit per bit, an X gate wherever the bit is 1."""
+    bits = _parse_bits(data)
+    n = len(bits)
+    if n > MAX_ENCODING_QUBITS:
+        raise ValueError(f'Basis encoding is limited to {MAX_ENCODING_QUBITS} bits')
+
+    gates = [
+        {'type': 'X', 'target': i, 'step': i}
+        for i, b in enumerate(bits) if b
+    ]
+    meta = {
+        'bits': bits,
+        'basis_state': ''.join(str(b) for b in bits),
+        'formula': '|' + ''.join(str(b) for b in bits) + '⟩',
+    }
+    return n, gates, meta
+
+
+def _angle_encoding(data, axis='RY', scale=1.0):
+    """One rotation per feature: R_axis(scale · x_i) on qubit i, from |0...0>."""
+    axis = str(axis).upper()
+    if axis not in ('RX', 'RY', 'RZ'):
+        raise ValueError('Angle encoding axis must be RX, RY or RZ')
+    values = _parse_numbers(data)
+    n = len(values)
+    if n > MAX_ENCODING_QUBITS:
+        raise ValueError(f'Angle encoding is limited to {MAX_ENCODING_QUBITS} features')
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+
+    angles = [scale * v for v in values]
+    gates = [
+        {'type': axis, 'target': i, 'theta': angles[i], 'step': 0}
+        for i in range(n)
+    ]
+    meta = {
+        'values': values,
+        'axis': axis,
+        'scale': scale,
+        'angles': angles,
+    }
+    return n, gates, meta
+
+
+def _amplitude_encoding(data):
+    """Encode a normalized vector as the amplitudes of the state.
+
+    len(data) values -> ceil(log2(len)) qubits. The vector is padded to the
+    next power of two, L2-normalized, and prepared with Qiskit's initialize,
+    then transpiled to a basic gate set so it maps to editor gates.
+    """
+    values = _parse_numbers(data)
+    length = len(values)
+    if length < 2:
+        raise ValueError('Amplitude encoding needs at least 2 values')
+
+    n = int(np.ceil(np.log2(length)))
+    if n > MAX_ENCODING_QUBITS:
+        raise ValueError(f'Amplitude encoding is limited to {2 ** MAX_ENCODING_QUBITS} values')
+
+    dim = 1 << n
+    vec = np.zeros(dim, dtype=float)
+    vec[:length] = values
+
+    norm = float(np.linalg.norm(vec))
+    if norm < 1e-12:
+        raise ValueError('Amplitude encoding needs a non-zero vector')
+    vec = vec / norm
+
+    qc = QuantumCircuit(n)
+    qc.initialize(vec, range(n))
+    # Decompose the opaque initialize instruction into gates the editor knows.
+    tqc = transpile(qc, basis_gates=['ry', 'rz', 'cx'], optimization_level=1)
+    gates = _circuit_to_editor_gates(tqc)
+
+    meta = {
+        'input': values,
+        'padded_length': dim,
+        'norm': norm,
+        'normalized': [float(x) for x in vec],
+    }
+    return n, gates, meta
+
+
+ENCODERS = {
+    'basis': _basis_encoding,
+    'amplitude': _amplitude_encoding,
+    'angle': _angle_encoding,
+}
+
+
 # Quantum circuit builder and simulator
 class QuantumCircuitBuilder:
     """Helper class to build and simulate quantum circuits"""
@@ -378,6 +571,70 @@ def simulate_circuit():
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/encode', methods=['POST'])
+def encode_data():
+    """
+    Encode classical data into a quantum state-preparation circuit.
+
+    Expected JSON body:
+    {
+        "encoding": "basis" | "amplitude" | "angle",
+        "data": "1011"  |  [0.5, 0.5, ...]  |  [0.1, 0.9],
+        "axis": "RY",    (angle encoding only, default RY)
+        "scale": 1.0,    (angle encoding only, default 1.0)
+        "shots": 1024    (optional)
+    }
+
+    Returns the generated gates (editor format), qubit count, the resulting
+    statevector / probabilities, and encoding-specific metadata.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+
+        encoding = str(data.get('encoding', 'basis')).lower()
+        encoder = ENCODERS.get(encoding)
+        if encoder is None:
+            return jsonify({'error': f'Unknown encoding: {encoding}'}), 400
+
+        payload = data.get('data')
+        shots = data.get('shots', 1024)
+
+        if encoding == 'angle':
+            qubits, gates, meta = encoder(
+                payload, axis=data.get('axis', 'RY'), scale=data.get('scale', 1.0)
+            )
+        else:
+            qubits, gates, meta = encoder(payload)
+
+        if qubits < 1:
+            return jsonify({'error': 'Encoding produced no qubits'}), 400
+
+        logger.info(f"Encoding '{encoding}' -> {qubits} qubits, {len(gates)} gates")
+
+        qc = QuantumCircuitBuilder.build_circuit(qubits, gates)
+        result = QuantumCircuitBuilder.simulate(qc, shots=shots)
+
+        if not result['success']:
+            return jsonify({'error': result.get('error', 'Simulation failed')}), 500
+
+        result.update({
+            'encoding': encoding,
+            'qubits': qubits,
+            'gates': gates,
+            'meta': meta,
+        })
+        return jsonify(result), 200
+
+    except ValueError as e:
+        logger.error(f"Encoding validation error: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Unexpected encoding error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 

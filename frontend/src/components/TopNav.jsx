@@ -145,6 +145,14 @@ function TopNav() {
             Templates
           </button>
 
+          {/* Data Encoding — opens the classical→quantum encoder page */}
+          <button
+            className="menu-link"
+            onClick={() => { setView('encode'); close() }}
+          >
+            Encode
+          </button>
+
           {/* View */}
           <div className="relative">
             <MenuTrigger name="view">View</MenuTrigger>
