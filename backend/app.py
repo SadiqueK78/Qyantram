@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from qiskit import QuantumCircuit, transpile
+from qiskit.quantum_info import Statevector
 from qiskit_aer import AerSimulator
 import numpy as np
 from typing import List, Dict, Any
@@ -635,6 +636,108 @@ def encode_data():
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Unexpected encoding error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+def _encode_statevector(encoding, point, axis='RY', scale=1.0):
+    """Encode one classical data point and return its statevector (np array).
+
+    Reuses the same encoders /encode uses, then evaluates the prepared state
+    directly (no sampling) so kernel entries are exact. Returns (qubits, sv).
+    """
+    encoder = ENCODERS[encoding]
+    if encoding == 'angle':
+        qubits, gates, _ = encoder(point, axis=axis, scale=scale)
+    else:
+        qubits, gates, _ = encoder(point)
+
+    qc = QuantumCircuitBuilder.build_circuit(qubits, gates)
+    qc.remove_final_measurements(inplace=True)
+    sv = np.asarray(Statevector(qc).data)
+    return qubits, sv
+
+
+# Cap the kernel matrix so a request stays fast (each cell is an inner product,
+# and every point runs its own state preparation).
+MAX_KERNEL_POINTS = 16
+
+
+@app.route('/kernel', methods=['POST'])
+def quantum_kernel():
+    """
+    Compute the quantum (fidelity) kernel matrix for a set of data points.
+
+    Each point x is mapped to a state |φ(x)⟩ by the chosen encoding feature
+    map; the kernel entry is the state fidelity
+
+        K[i][j] = |⟨φ(xᵢ)|φ(xⱼ)⟩|²
+
+    which is exactly what quantum-kernel SVMs use as their similarity measure.
+
+    Expected JSON body:
+    {
+        "encoding": "angle" | "amplitude" | "basis",
+        "points": [[0.1, 0.2], [0.9, 0.8], ...],   (each point a feature list)
+        "axis": "RY",   (angle only)
+        "scale": 1.0    (angle only)
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+
+        encoding = str(data.get('encoding', 'angle')).lower()
+        if encoding not in ENCODERS:
+            return jsonify({'error': f'Unknown encoding: {encoding}'}), 400
+
+        points = data.get('points')
+        if not isinstance(points, list) or len(points) < 2:
+            return jsonify({'error': 'Provide at least 2 data points'}), 400
+        if len(points) > MAX_KERNEL_POINTS:
+            return jsonify({'error': f'At most {MAX_KERNEL_POINTS} data points'}), 400
+
+        axis = data.get('axis', 'RY')
+        scale = data.get('scale', 1.0)
+
+        # Encode every point; all states must share a qubit count to be
+        # comparable (guaranteed when points have equal length).
+        qubits = None
+        states = []
+        for idx, point in enumerate(points):
+            n, sv = _encode_statevector(encoding, point, axis=axis, scale=scale)
+            if qubits is None:
+                qubits = n
+            elif n != qubits:
+                return jsonify({
+                    'error': 'All data points must have the same length'
+                }), 400
+            states.append(sv)
+
+        # Fidelity kernel — symmetric, unit diagonal.
+        size = len(states)
+        matrix = [[0.0] * size for _ in range(size)]
+        for i in range(size):
+            matrix[i][i] = 1.0
+            for j in range(i + 1, size):
+                overlap = complex(np.vdot(states[i], states[j]))
+                fidelity = float(abs(overlap) ** 2)
+                matrix[i][j] = fidelity
+                matrix[j][i] = fidelity
+
+        return jsonify({
+            'success': True,
+            'encoding': encoding,
+            'qubits': qubits,
+            'kernel': matrix,
+            'num_points': size,
+        }), 200
+
+    except ValueError as e:
+        logger.error(f"Kernel validation error: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Unexpected kernel error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 

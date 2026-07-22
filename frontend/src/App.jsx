@@ -15,6 +15,7 @@ import Footer from './components/Footer'
 import TemplatesPage from './components/TemplatesPage'
 import AboutPage from './components/AboutPage'
 import EncodePage from './components/EncodePage'
+import KernelPage from './components/KernelPage'
 import WelcomePrompt from './components/WelcomePrompt'
 
 function App() {
@@ -61,6 +62,8 @@ function App() {
           <AboutPage />
         ) : view === 'encode' ? (
           <EncodePage />
+        ) : view === 'kernel' ? (
+          <KernelPage />
         ) : (
           <main className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-6 lg:px-8">
             <GatePalette />

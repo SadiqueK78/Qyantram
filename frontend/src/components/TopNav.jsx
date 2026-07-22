@@ -153,6 +153,14 @@ function TopNav() {
             Encode
           </button>
 
+          {/* Quantum Kernel — feature-map similarity heatmap */}
+          <button
+            className="menu-link"
+            onClick={() => { setView('kernel'); close() }}
+          >
+            Kernel
+          </button>
+
           {/* View */}
           <div className="relative">
             <MenuTrigger name="view">View</MenuTrigger>

@@ -17,6 +17,7 @@ export function getAPIEndpoint(path) {
 export const API_ENDPOINTS = {
   SIMULATE: getAPIEndpoint('simulate'),
   ENCODE: getAPIEndpoint('encode'),
+  KERNEL: getAPIEndpoint('kernel'),
   HEALTH: getAPIEndpoint('health'),
   AI_EXPLAIN: getAPIEndpoint('ai-explain'),
   LEARN_EXPLAIN: getAPIEndpoint('learn/explain'),

@@ -215,7 +215,7 @@ export const useCircuitStore = create((set, get) => ({
   debugMode: false,
   toggleDebug: () => set((state) => ({ debugMode: !state.debugMode })),
 
-  // Top-level view: 'editor' (main simulation page) | 'templates' (gallery) | 'about' (about us) | 'encode' (data encoding)
+  // Top-level view: 'editor' | 'templates' | 'about' | 'encode' (data encoding) | 'kernel' (quantum kernel)
   view: 'editor',
   setView: (view) => set({ view }),
 
